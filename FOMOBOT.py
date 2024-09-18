@@ -196,7 +196,7 @@ async def on_ready():
   for user in user_data:
     try: 
       user["object"] = await bot.fetch_user(user["id"])
-      await user["object"].send("[DEBUG]: Flat Notifs is restarting... (just checking that the bot can still reach you)")
+      # await user["object"].send("[DEBUG]: Flat Notifs is restarting... (just checking that the bot can still reach you)")
 
     except Exception as e:
       raise Exception(f"Error sending init message to user {user['id']} or user not found:", e)
@@ -218,7 +218,10 @@ async def on_ready():
       print(f"Newest element on startup is ID-{user['newest_id']}") # DEBUG
       
     except Exception as e:
-      await user["object"].send("[DEBUG]: Unable to check your notifications! Did you delete your API key?\nIf you have gotten this notification multiple times please use the command /pause and then contact the developer (get contact information by using the /help command)")
+      try:
+        await user["object"].send("[DEBUG]: Unable to check your notifications! Did you delete your API key?\nIf you have gotten this notification multiple times please use the command /pause and then contact the developer (get contact information by using the /help command)")
+      except:
+        raise Exception(f"Error sending 'unable to check notifications' message to user {user['id']}:", e)
 
     await asyncio.sleep(30) # wait between checks
 
@@ -270,7 +273,8 @@ async def on_message(message):
             "api_key": f.encrypt(api_key.encode()).decode(),
             "important": {
               "actor.username": ['flat'],
-              "type": ["userFollow", "scoreStar"]
+              "type": ["userFollow", "scoreStar"],
+              "attachments.score.id": []
             },
             "override": False,
             "paused": False,
@@ -456,13 +460,15 @@ async def on_message(message):
     await user["object"].send(f"Rules: {esc_md(str(user['important']))}{chr(10)+'Override is currently enabled (disable by using /override)' if user['override'] else ''}{chr(10)+'Notifications are currently paused (unpause by using /pause)' if user['paused'] else ''}")
 
 
-  # Show all commands
-  elif message_content[0] == "/help":
-    await message.channel.send(f"**Help**\n\n**Available commands:**\n/addrule include/exclude category value\n/removerule value\n/override\n/pause\n/sendhere\n/unregister\n/rules\n/help\n/version\n\n**Available categories/values (for /addrule and /removerule):**\nactor.username (Flat username, without the @ sign. e.g. actor.username flat)\ntype (Type of notification. Options: scorePublish, scoreComment, scoreStar, userFollow. e.g. type userFollow)\n\n*Answer not here, found bugs, or want to help with development? Contact the developer:*\n*Discord: xarical*\n*Flat.io: @rzyr_*\n*Github: xarical/fomobot (Go here for the TODO and known issues lists!)*\n\n-# *Disclaimer: Flat Notifs is not made by Flat.io. It is a project that uses the Flat.io API, made by a member of the community (me). Additionally, it is in beta and worked on when I have time to, so it is not guaranteed to be free of bugs, updated frequently, or even work. Updates may introduce breaking changes. Logs are collected for debug purposes. Use at your own discretion.*")
-
   # Get version
   elif message_content[0] == "/version":
-    await message.channel.send("**Version:** v2024.9.16\nv2024.9.16 - Bug fixes, add limited support for specifying 'exclude' for rules, allow adding multiple rules at once (of the same include/exclude and category), add streaming status\nv2024.9.14 - Minor update to notification and command handling, add /pause and /sendhere commands\nv2024.9.12 - Add persistent storage, key encryption, and multi-user support\nv2024.9.6 - Prototype complete")
+    await message.channel.send("**Version:** v2024.9.17\nv2024.9.17 - Bug fixes, add limited support for specifying 'exclude' for rules, allow adding multiple rules at once (of the same include/exclude and category), add category attachments.score.id, add custom status\nv2024.9.14 - Minor update to notification and command handling, add /pause and /sendhere commands to allow setting to send in specific channels\nv2024.9.12 - Add persistent storage, key encryption, and multi-user support\nv2024.9.6 - Prototype complete")
+
+
+  # Show all commands
+  elif message_content[0] == "/help":
+    await message.channel.send(f"**Help**\n\n**Available commands:**\n`/addrule include/exclude category value`  (Add a rule. More than one value can be specified)\n`/removerule value`  (Remove a rule. More than one value can be specified)\n`/override`  (Override the rules you have set. You will receive all notifications. Use the same command to toggle on and off)\n`/pause`  (Pause notifications. You will not receive any notifications. Use the same command to toggle on and off)\n`/sendhere`  (Set your notifications to send in the channel where the command was sent. Use the same command to toggle on and off)\n`/unregister`  (Unregister and delete all of your information including your rules, API key, and other preferences)\n`/rules`  (Show all rules you have set)\n`/version`  (Show current version and patch notes)\n`/help`  (You are here!)\n\n**Available categories/values (for /addrule and /removerule):**\n`actor.username`  (Flat.io username, without the @ sign. e.g. `actor.username flat`)\n`type`  (Type of notification. Options: scorePublish, scoreComment, scoreStar, userFollow. e.g. `type userFollow`)\n`attachments.score.id`  (id of a score, without the name. e.g. `attachments.score.id 623f2fab79ac0e0012b95dc8`) \n\n*Answer not here, have feedback, or want to help with development? Contact the developer:*\n*Discord: xarical*\n*Flat.io: @rzyr_*\n*Github: xarical/flat-notifications (Go here for the TODO and known issues lists!)*\n\n-# *Disclaimer: Flat Notifs is not made by Flat.io. It is a project that uses the Flat.io API, made by a member of the community (me). Additionally, it is in beta and worked on when I have time to, so it is not guaranteed to be free of bugs, be updated frequently, or even work. Updates may introduce breaking changes. Logs are collected for debug purposes. Use at your own discretion.*")
+
 
 # <-- Run Flask app / Discord bot -->
 
