@@ -136,8 +136,9 @@ async def check_notifs():
             value = element
             for k in nested_category:
               value = value.get(k, None)
-              if value is None:
-                break
+            if value is None:
+              print("Error trying to iterate to", category, "in", element)
+              continue
             
             # Check if excluded
             if ("-"+value) in values:
@@ -272,8 +273,8 @@ async def on_message(message):
             "id": message.author.id,
             "api_key": f.encrypt(api_key.encode()).decode(),
             "important": {
-              "actor.username": ['flat'],
-              "type": ["userFollow", "scoreStar"],
+              "actor.username": ['+flat'],
+              "type": ["+userFollow", "+scoreStar"],
               "attachments.score.id": []
             },
             "override": False,
@@ -290,10 +291,10 @@ async def on_message(message):
           print(f"user {user} registered, newest element on startup is ID-{elements[0]['id']}") # DEBUG
 
         else:
-          await message.channel.send("Please try again and provide a valid API key (double check that your key is still valid and the scopes are correct!)\n-# *Remember to never send your API key in a public channel! It can give other people access to your account's information. Send it in DMs instead. If you exposed your API key, delete it in the Flat.io Developers portal and create a new one.*")
+          await message.channel.send("Please try again and provide a valid API key (double check that the key is still valid and has the notifications.readonly scope!)\n-# *Remember to never send your API key in a public channel! It can give other people access to your account's information. Send it in DMs instead. If you exposed your API key, delete it in the Flat.io Developers portal and create a new one.*")
 
       except IndexError:
-        await message.channel.send("Please try again and provide an API key in this format: /getstarted key (where key is your API key)\n-# *Remember to never send your API key in a public channel! It can give other people access to your account's information. Send it in DMs instead. If you exposed your API key, delete it in the Flat.io Developers portal and create a new one.*")
+        await message.channel.send("Welcome to Flat.io Notifs! Please provide an API key in this format: /getstarted key (where key is your API key). You can get an API key from the [Flat.io Developers portal](https://flat.io/developers/apps) -> Personal Tokens; make sure you give the key the notifications.readonly scope.\n-# *Remember to never send your API key in a public channel! It can give other people access to your account's information. Send it in DMs instead. If you exposed your API key, delete it in the Flat.io Developers portal and create a new one.*")
 
     return
 
@@ -380,7 +381,7 @@ async def on_message(message):
   # Change notif send channel to here
   elif message_content[0] == "/sendhere":
     if user["sendhere"]["bool"]:
-      user["sendhere"]["bool"] == False
+      user["sendhere"]["bool"] = False
       await message.channel.send("Successfully changed your notification channel back to default (your DMs)")
       user_data_changed = True
 
@@ -390,7 +391,7 @@ async def on_message(message):
 
       # Function to check that it's still the same user in the same channel
       def check(m: discord.Message):
-        print("unregister check:", (m.author.id == message.author.id and m.channel.id == message.channel.id)) # DEBUG
+        print("sendhere check:", (m.author.id == message.author.id and m.channel.id == message.channel.id)) # DEBUG
         return m.author.id == message.author.id and m.channel.id == message.channel.id 
       
       # Wait 30 sec for a message that meets the check() requirement 
@@ -467,7 +468,7 @@ async def on_message(message):
 
   # Show all commands
   elif message_content[0] == "/help":
-    await message.channel.send(f"**Help**\n\n**Available commands:**\n`/addrule include/exclude category value`  (Add a rule. More than one value can be specified)\n`/removerule value`  (Remove a rule. More than one value can be specified)\n`/override`  (Override the rules you have set. You will receive all notifications. Use the same command to toggle on and off)\n`/pause`  (Pause notifications. You will not receive any notifications. Use the same command to toggle on and off)\n`/sendhere`  (Set your notifications to send in the channel where the command was sent. Use the same command to toggle on and off)\n`/unregister`  (Unregister and delete all of your information including your rules, API key, and other preferences)\n`/rules`  (Show all rules you have set)\n`/version`  (Show current version and patch notes)\n`/help`  (You are here!)\n\n**Available categories/values (for /addrule and /removerule):**\n`actor.username`  (Flat.io username, without the @ sign. e.g. `actor.username flat`)\n`type`  (Type of notification. Options: scorePublish, scoreComment, scoreStar, userFollow. e.g. `type userFollow`)\n`attachments.score.id`  (id of a score, without the name. e.g. `attachments.score.id 623f2fab79ac0e0012b95dc8`) \n\n*Answer not here, have feedback, or want to help with development? Contact the developer:*\n*Discord: xarical*\n*Flat.io: @rzyr_*\n*Github: xarical/flat-notifications (Go here for the TODO and known issues lists!)*\n\n-# *Disclaimer: Flat Notifs is not made by Flat.io. It is a project that uses the Flat.io API, made by a member of the community (me). Additionally, it is in beta and worked on when I have time to, so it is not guaranteed to be free of bugs, be updated frequently, or even work. Updates may introduce breaking changes. Logs are collected for debug purposes. Use at your own discretion.*")
+    await message.channel.send(f"**Help**\n\n**Available commands:**\n`/addrule include/exclude category value`  (Add a rule. More than one value can be specified, seperated by spaces)\n`/removerule value`  (Remove a rule. More than one value can be specified, seperated by spaces)\n`/override`  (Override the rules you have set. You will receive all notifications. Use the same command to toggle on and off)\n`/pause`  (Pause notifications. You will not receive any notifications. Use the same command to toggle on and off)\n`/sendhere`  (Set your notifications to send in the channel where the command was sent. Use the same command to toggle on and off)\n`/unregister`  (Unregister and delete all of your information including your rules, API key, and other preferences)\n`/rules`  (Show all rules you have set)\n`/version`  (Show current version and patch notes)\n`/help`  (You are here!)\n\n**Available categories/values (for /addrule and /removerule):**\n`actor.username`  (Flat.io username, without the @ sign. e.g. `actor.username flat`)\n`type`  (Type of notification. Options: scorePublish, scoreComment, scoreStar, userFollow. e.g. `type userFollow`)\n`attachments.score.id`  (id of a score, without the name. e.g. `attachments.score.id 623f2fab79ac0e0012b95dc8`) \n\n*Answer not here, have feedback, or want to help with development? Contact the developer:*\n*Discord: xarical*\n*Flat.io: @rzyr_*\n*Github: xarical/flat-notifications (Go here for the TODO and known issues lists!)*\n\n-# *Disclaimer: Flat Notifs is not made by Flat.io. It is a project that uses the Flat.io API, made by a member of the community (me). Additionally, it is in beta and worked on when I have time to, so it is not guaranteed to be free of bugs, be updated frequently, or even work. Updates may introduce breaking changes. Logs are collected for debug purposes. Use at your own discretion.*")
 
 
 # <-- Run Flask app / Discord bot -->
