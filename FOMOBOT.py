@@ -1,4 +1,5 @@
 # pip install --quiet cryptography datasets discord.py flask requests
+
 import asyncio
 from datetime import datetime, timezone
 import json
@@ -14,7 +15,11 @@ from huggingface_hub import HfApi
 import requests
 
 
-# Init Discord bot
+# Print datetime of startup
+print(f"[{datetime.now(timezone.utc).date().strftime('%Y-%m-%d')}], [{datetime.now(timezone.utc).strftime('%H:%M:%S')}] - Hello world!") # DEBUG
+
+
+# Instantiate Discord bot
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='/', intents=intents)
@@ -29,7 +34,7 @@ user_data_changed = False
 ready = False
 
 
-# Load and reconstruct the user_data from the dataset
+# Load and reconstruct the user_data from the HF dataset
 try:
   dataset = load_dataset(dataset_id, token=hf_api_key)
   unprocessed_data = dataset['train'].to_dict()
@@ -46,11 +51,16 @@ try:
       })
     
 except Exception as e:
-  print("WARNING: dataset is empty or does not exist(?):", e)
+  print(f"[{datetime.now(timezone.utc).date().strftime('%Y-%m-%d')}], [{datetime.now(timezone.utc).strftime('%H:%M:%S')}] -", "WARNING: dataset is empty or does not exist(?):", e) # manually add datetime as dt_print() not defined yet
   user_data = []
 
 
-# <-- Misc functions -->
+""" <-- Functions --> """
+
+# Function to add datetime to print() (use this instead of print())
+def dt_print(*args, **kwargs):
+  print(f"[{datetime.now(timezone.utc).date().strftime('%Y-%m-%d')}], [{datetime.now(timezone.utc).strftime('%H:%M:%S')}] -", *args, **kwargs)
+
 
 # Function to escape markdown
 def esc_md(text):
@@ -77,7 +87,7 @@ def update_ds():
       commit_message="Update data.json 🤖",
       token=hf_api_key
   )
-  print("Database updated!")
+  dt_print("Database updated!")
 
 
 # Function to get the contents of the api
@@ -92,21 +102,21 @@ def read_api(token):
     return response.json()
   
   except requests.exceptions.RequestException as e:
-    print("API request error:", e)
+    dt_print("API request error:", e)
     return []
     
   except ValueError as e:
-    print("JSON parsing error:", e)
+    dt_print("JSON parsing error:", e)
     return []
 
 
-# <-- Discord -->
+""" <-- Discord --> """
 
 # Check notifications loop
 @tasks.loop(seconds=60)
 async def check_notifs():
   check_notifs.change_interval(seconds=(len(user_data)*30))
-  # print(f"[{datetime.now(timezone.utc).date().strftime('%Y-%m-%d')}], [{datetime.now(timezone.utc).strftime('%H:%M:%S')}] - checking") # DEBUG
+  # dt_print("checking") # DEBUG
   global user_data_changed
 
   # If there've been any changes to user_data, update dataset
@@ -127,18 +137,18 @@ async def check_notifs():
 
         except Exception as e:
           user["paused"] = True
-          print(f"Error, user {user['id']} not found:", e)
+          dt_print(f"Error, user id {user['id']} (object?: {user['object']}) not found:", e)
           continue
 
       if not user["newest_id"]:
         user["paused"] = True
-        await user["object"].send("[DEBUG]: Unable to check your notifications! Did you delete your API key? (Automatically pausing to prevent accidentally spamming you; use /pause to unpause)")
+        await user["object"].send("[DEBUG]: Unable to check your notifications! Did you delete your personal token?\n(Automatically pausing to avoid spamming you; you can use  `/flatnotifs pause`  to unpause)")
         continue
 
       if elements:
         for element in elements:
           # Break loop if you find the current element that matches the newest element
-          if element['id'] == user['newest_id']:
+          if element['id'] == user["newest_id"]:
             break
 
           # Iterate through important rules, append to triggered_rules
@@ -153,7 +163,7 @@ async def check_notifs():
             for k in nested_category:
               value = value.get(k, None)
               if value is None:
-                print("Error iterating to", category, "in", element)
+                dt_print(f"Error iterating to {category} in {element} for user id {user['id']} (object?: {user['object']})")
                 break
 
             if value is None:
@@ -172,8 +182,7 @@ async def check_notifs():
                 is_important = True
               triggered_rules.append(category + ": +" + value)
               
-          # DEBUG
-          print(f"{element['actor']['printableName']}: {element['type']}, ID-{element['id']} {'is' if is_important else 'is not'} categorized as important{' by rule(s): ' + str(triggered_rules) if is_important else '.'}")
+          dt_print(f"{element['actor']['printableName']}: {element['type']}, ID-{element['id']} {'is' if is_important else 'is not'} categorized as important{' by rule(s): ' + str(triggered_rules) if is_important else '.'}") # DEBUG
           # Output
           if is_important or user["override"]:
             if element['type'] == "scoreComment":
@@ -195,9 +204,9 @@ async def check_notifs():
                 await user["channel"].send(f"{user['object'].mention} {n}")
                 
               except Exception as e:
-                print("WARNING: unable to find specified channel(?):", e)
+                dt_print(f"WARNING: unable to find specified channel for user id {user['id']} (object?: {user['object']}) is ID-{user['newest_id']}:", e)
                 user["sendhere"]["bool"] = False
-                await user["object"].send("[DEBUG]: Unable to find your specified channel! Defaulting to DMs. Was the channel deleted, or did the bot lose access to it?\nYou can use /sendhere again to pick a channel to send notifications")
+                await user["object"].send("[DEBUG]: Unable to find your specified channel! Was the channel deleted, or did the bot lose access to it?\n(Defaulting to DMs to avoid spamming you; you can use  `/flatnotifs sendhere`  again to pick a channel to send notifications)")
                 await user["object"].send(n)
 
             else:
@@ -208,7 +217,7 @@ async def check_notifs():
 
       else:
         user["paused"] = True
-        await user["object"].send("[DEBUG]: Unable to check your notifications! Did you delete your API key? (Automatically pausing to prevent accidentally spamming you; use /pause to unpause)")
+        await user["object"].send("[DEBUG]: Unable to check your notifications! Did you delete your personal token?\n(Automatically pausing to avoid spamming you; you can use  `/flatnotifs pause`  to unpause)")
           
       await asyncio.sleep(30) # wait between checks
 
@@ -216,7 +225,7 @@ async def check_notifs():
 # On Discord bot startup
 @bot.event
 async def on_ready():
-  print("Bot has connected to Discord! :3")
+  dt_print("Bot has connected to Discord! :3")
 
   # Set users and test that users can be reached
   for user in user_data:
@@ -229,12 +238,12 @@ async def on_ready():
           user["channel"] = await bot.fetch_channel(user["sendhere"]["channel_id"])
 
       except Exception as e:
-        print("WARNING: unable to find specified channel(?):", e)
+        dt_print(f"WARNING: unable to find specified channel for user id {user['id']} (object?: {user['object']}) is ID-{user['newest_id']}:", e)
         user["sendhere"]["bool"] = False
-        await user["object"].send("[DEBUG]: Unable to find your specified channel! Defaulting to DMs. Was the channel deleted, or did the bot lose access to it?\nYou can use /sendhere again to pick a channel to send notifications")
+        await user["object"].send("[DEBUG]: Unable to find your specified channel! Was the channel deleted, or did the bot lose access to it?\n(Defaulting to DMs to avoid spamming you; you can use  `/flatnotifs sendhere`  again to pick a channel to send notifications)")
 
     except Exception as e:
-      raise Exception(f"Error sending startup message to user {user['id']} or user not found:", e)
+      raise Exception(f"Error sending startup message to user id {user['id']} (object?: {user['object']}) or user not found:", e)
 
 
   # Get the newest element in the notifications
@@ -243,15 +252,15 @@ async def on_ready():
       api_key = f.decrypt(user["api_key"].encode()).decode()
       elements = read_api(api_key)
       user["newest_id"] = elements[0]["id"]
-      print(f"Newest element on startup is ID-{user['newest_id']}") # DEBUG
+      dt_print(f"Newest element on startup for user id {user['id']} (object?: {user['object']}) is ID-{user['newest_id']}") # DEBUG
       
     except Exception as e:
       try:
-        print("WARNING: unable to check notifications(?):", e)
+        dt_print(f"WARNING: unable to check notifications for user id {user['id']} (object?: {user['object']}) is ID-{user['newest_id']}:", e)
         user["paused"] = True
-        await user["object"].send("[DEBUG]: Unable to check your notifications! Did you delete your API key? (Automatically pausing to prevent accidentally spamming you; use /pause to unpause)")
+        await user["object"].send("[DEBUG]: Unable to check your notifications! Did you delete your personal token?\n(Automatically pausing to avoid spamming you; you can use  `/flatnotifs pause`  to unpause)")
       except Exception as e2:
-        raise Exception(f"Error sending 'unable to check notifications' message to user {user['id']}:", e2)
+        raise Exception(f"Error sending 'unable to check notifications' message to user id {user['id']} (object?: {user['object']}):", e2)
 
     await asyncio.sleep(5) # wait between checks
 
@@ -260,10 +269,10 @@ async def on_ready():
   ready = True
   game = discord.Game(name="with the Flat.io API")
   await bot.change_presence(status=discord.Status.online, activity=game)
-  print(f"{len(user_data)} users")
+  dt_print(f"{len(user_data)} users on startup")
 
   # Start the check_notifs task
-  print("Watching notifs...")
+  dt_print("Watching notifs...")
   check_notifs.start()
 
 
@@ -272,20 +281,21 @@ async def on_ready():
 async def on_message(message):
   global user_data_changed
   message_content = message.content.split()
+
   if not ready:
-    print("Not ready yet") # DEBUG
-    return
-  if not message_content:
-    print("Whoops, there's no message content:", message) # DEBUG
-    return
-
-
-  # <-- User identification/registration -->
-
-  # If bot user, return
-  if message.author.id == bot.user.id:
+    dt_print("(on_message) Not ready yet") # DEBUG
     return
   
+  if not message_content:
+    dt_print("(on_message) Whoops, there's no message content:", message) # DEBUG
+    return
+  
+  # If isn't prefixed with /flatnotifs or is bot user, return
+  if message_content[0] != "/flatnotifs" or message.author.id == bot.user.id:
+    return
+
+
+  """ <-- User identification/registration --> """
 
   # If user is registered, set user
   registered = False
@@ -298,11 +308,11 @@ async def on_message(message):
 
   # If not registered, prompt the user to register
   if not registered:
-    if message_content[0] == "/getstarted":
+    if len(message_content) > 1 and message_content[1] == "getstarted":
       if isinstance(message.channel, discord.DMChannel):
         # If API key has been provided and is valid, register
         try:
-          api_key = message_content[1]
+          api_key = message_content[2]
           elements = read_api(api_key)
 
           if elements:
@@ -311,8 +321,8 @@ async def on_message(message):
               "id": message.author.id,
               "api_key": f.encrypt(api_key.encode()).decode(),
               "important": {
-                "actor.username": ['+flat'],
-                "type": ["+userFollow", "+scoreStar"],
+                "actor.username": [],
+                "type": [],
                 "attachments.score.id": []
               },
               "override": False,
@@ -324,28 +334,32 @@ async def on_message(message):
               "newest_id": elements[0]["id"]
             })
 
-            await message.channel.send("Successfully registered! (If you didn't mean to do this, use the command /unregister. To learn how to start setting rules, use the command /help)")
+            await message.channel.send("Successfully registered! (If you didn't mean to do this, use the command  `/flatnotifs unregister`. To learn how to start setting rules, use the command  `/flatnotifs help` )")
             user_data_changed = True
-            print(f"user {user} registered, newest element on startup is ID-{elements[0]['id']}") # DEBUG
+            dt_print(f"User id {user['id']} (object?: {user['object']}) registered, newest element on startup is ID-{elements[0]['id']}") # DEBUG
 
           else:
-            await message.channel.send("Please try again and provide a valid API key (double check that the key is still valid and has the notifications.readonly scope!)")
+            await message.channel.send("Please try again and provide a valid personal token (double check that the token is still valid and has the notifications.readonly scope!)")
 
         except IndexError:
-          await message.channel.send("Welcome to Flat.io Notifs! Please provide an API key in this format: /getstarted key (where key is your API key). You can get an API key from the [Flat.io Developers portal](https://flat.io/developers/apps) -> Personal Tokens; make sure you give the key the notifications.readonly scope.")
+          await message.channel.send("Welcome to Flat.io Notifs! Please provide a personal token in this format:  `/flatnotifs getstarted token`  (where token is your personal token).\nTo get a personal token: 1. Go to the [Flat.io Developers portal](https://flat.io/developers/apps), 2. Create a new app if you don't have one already, 3. Go to Personal Tokens, 4. Create a new token and add the notifications.readonly scope, 5. Copy the token that appears.")
+          
       else:
-        await message.channel.send("getstarted can only be used in DMs. Remember to never send your API key in a public channel! It can give other people access to your account's information. If you exposed your API key, delete it in the [Flat.io Developers portal](https://flat.io/developers/apps) and create a new one.")
+        await message.channel.send("getstarted can only be used in DMs. Remember to never send your personal token in a public channel! It can give other people access to your account's information. If you exposed your personal token, go delete it in the [Flat.io Developers portal](https://flat.io/developers/apps) and create a new one.")
+
+    else:
+       await message.channel.send("Welcome to Flat.io Notifs! Please provide a personal token in this format:  `/flatnotifs getstarted token`  (where token is your personal token).\nTo get a personal token: 1. Go to the [Flat.io Developers portal](https://flat.io/developers/apps), 2. Create a new app if you don't have one already, 3. Go to Personal Tokens, 4. Create a new token and add the notifications.readonly scope, 5. Copy the token that appears.")
     return
 
 
-  # <--- Commands --->
+  """ <--- Commands ---> """
 
   # Add a rule
-  if message_content[0] == "/addrule":
+  if message_content[1] == "addrule":
     try:
-      include_exclude = message_content[1]
-      category = message_content[2]
-      input_values = message_content[3:]
+      include_exclude = message_content[2]
+      category = message_content[3]
+      input_values = message_content[4:]
 
       for input_value in input_values:
         if include_exclude == "include":
@@ -355,7 +369,7 @@ async def on_message(message):
           temp = "-"+input_value
 
         else:
-          await message.channel.send("Please try again and provide include/exclude and a category and value in this format: /addrule include/exclude category value (first parameter was not include or exclude)")
+          await message.channel.send("Please try again and provide include/exclude and a category and value in this format: `/flatnotifs addrule include/exclude category value`  (first parameter was not include or exclude)")
           return
         
         if category in user["important"]:
@@ -367,13 +381,13 @@ async def on_message(message):
           await message.channel.send(f"Category {esc_md(category)} not found")
 
     except IndexError:
-      await message.channel.send("Please try again and provide include/exclude and a category and value in this format: /addrule include/exclude category value (category or value was missing)")
+      await message.channel.send("Please try again and provide include/exclude and a category and value in this format:  `/flatnotifs addrule include/exclude category value`  (category or value was missing)")
 
 
   # Remove a rule
-  elif message_content[0] == "/removerule":
+  elif message_content[1] == "removerule":
     try:
-      input_values = message_content[1:]
+      input_values = message_content[2:]
 
       for input_value in input_values:
         found = False
@@ -390,63 +404,63 @@ async def on_message(message):
           await message.channel.send(f"Rule {esc_md(input_value)} not found")
 
     except IndexError:
-      await message.channel.send("Please try again and provide a value in this format: /removerule value")
+      await message.channel.send("Please try again and provide a value in this format:  `/flatnotifs removerule value`")
   
 
   # Override all rules
-  elif message_content[0] == "/override":
+  elif message_content[1] == "override":
     if user["override"]:
-      await message.channel.send("Override disabled (You will now only be notified of notifications that match your specified filters. Re-enable by using /override)")
+      await message.channel.send("Override disabled (You will now only be notified of notifications that match your specified filters. Re-enable by using  `/flatnotifs override)`")
       
     else:
-      await message.channel.send("Override enabled (You will now be notified of all notifications. Disable by using /override)")
+      await message.channel.send("Override enabled (You will now be notified of all notifications. Disable by using  `/flatnotifs override)`")
 
     user["override"] = not user["override"]
     user_data_changed = True
 
 
   # Pause notifications
-  elif message_content[0] == "/pause":
+  elif message_content[1] == "pause":
     if user["paused"]:
       try:
         api_key = f.decrypt(user["api_key"].encode()).decode()
         elements = read_api(api_key)
         user["newest_id"] = elements[0]["id"]
-        print(f"Newest element on unpause is ID-{user['newest_id']}") # DEBUG
+        dt_print(f"Newest element on unpause for user id {user['id']} (object?: {user['object']}) is ID-{user['newest_id']}") # DEBUG
         user["paused"] = False
         user_data_changed = True
-        await message.channel.send("Notifications unpaused (You will now resume receiving notifications. Pause by using /pause)")
+        await message.channel.send("Notifications unpaused (You will now resume being notified of notifications. Pause by using  `/flatnotifs pause)`")
       
       except Exception as e:
         try:
-          print("WARNING: unable to check notifications(?):", e)
+          dt_print(f"WARNING: unable to check notifications for user id {user['id']} (object?: {user['object']}) is ID-{user['newest_id']}:", e)
           user["paused"] = True
-          await message.channel.send("[DEBUG]: Unable to check your notifications (on unpause)! Did you delete your API key? (Automatically pausing to prevent accidentally spamming you; use /pause to unpause)")
+          await message.channel.send("[DEBUG]: Unable to check your notifications (on unpause)! Did you delete your personal token?\n(Automatically pausing to avoid spamming you; you can use  `/flatnotifs pause`  to unpause)")
         except Exception as e2:
-          raise Exception(f"Error sending 'unable to check notifications on unpause' message to user {user['id']}:", e2)
+          raise Exception(f"Error sending 'unable to check notifications on unpause' message to user id {user['id']} (object?: {user['object']}):", e2)
 
     else:
-      await message.channel.send("Notifications paused (You will not receive notifications. Unpause by using /pause)")
+      await message.channel.send("Notifications paused (You will not be notified of any notifications. Unpause by using  `/flatnotifs pause)`")
       user["paused"] = True
       user_data_changed = True
 
 
   # Change notif send channel to here
-  elif message_content[0] == "/sendhere":
+  elif message_content[1] == "sendhere":
     if user["sendhere"]["bool"]:
       user["sendhere"]["bool"] = False
       await message.channel.send("Successfully changed your notification channel back to default (your DMs)")
       user_data_changed = True
 
     else:
-      # check that it's not DMs
+      # Check that it's not DMs
       if not isinstance(message.channel, discord.DMChannel):
         # Ask for confirmation
-        await message.channel.send("Are you sure you want to switch your notification send channel to here? (Y/N)\nIf this is a public channel, that means anyone can see your notifications.")
+        await message.channel.send("Are you sure you want to switch your notification send channel to here? (Y/N)\nIf this is a public channel, that means anyone can see the notifications that the bot sends you.")
 
         # Function to check that it's still the same user in the same channel
         def check(m: discord.Message):
-          print("sendhere check:", (m.author.id == message.author.id and m.channel.id == message.channel.id)) # DEBUG
+          dt_print(m.author, "sendhere check:", (m.author.id == message.author.id and m.channel.id == message.channel.id)) # DEBUG
           return m.author.id == message.author.id and m.channel.id == message.channel.id 
         
         # Wait 30 sec for a message that meets the check() requirement 
@@ -454,7 +468,7 @@ async def on_message(message):
           msg = await bot.wait_for("message", check=check, timeout=30)
 
         except Exception as e:
-          print("WARNING: timeout(?):", e)
+          dt_print("WARNING: timeout(?):", e)
           await message.channel.send("Cancelling sendhere (no response for 30 sec)")
           return
         
@@ -469,23 +483,23 @@ async def on_message(message):
               user_data_changed = True
 
             except Exception as e:
-              print("Setting sendhere error:", e)
+              dt_print(f"Error setting sendhere for user id {user['id']} (object?: {user['object']}):", e)
               await message.channel.send("Oops, there was an error while setting sendhere")
 
           else:
             await message.channel.send("Cancelling sendhere (received a response other than 'Y')")
       else:
-        await message.channel.send("/sendhere can only be used in channels.")
+        await message.channel.send("sendhere can only be used in channels.")
 
 
   # Unregister
-  elif message_content[0] == "/unregister":
+  elif message_content[1] == "unregister":
     # Ask for confirmation
-    await message.channel.send("Are you sure you want to unregister? (Y/N)\nUnregistering means that you will lose any rules that you have set and will no longer receive notifications from this bot. Only unregister if you don't want to receive notifications from this bot anymore or if you need to change your API key")
+    await message.channel.send("Are you sure you want to unregister? (Y/N)\nUnregistering means that you will lose any rules that you have set and will no longer receive notifications from this bot. Only unregister if you don't want to receive notifications from this bot anymore or if you need to change your personal token")
 
     # Function to check that it's still the same user in the same channel
     def check(m: discord.Message):
-      print("unregister check:", (m.author.id == message.author.id and m.channel.id == message.channel.id)) # DEBUG
+      dt_print(m.author, "unregister check:", (m.author.id == message.author.id and m.channel.id == message.channel.id)) # DEBUG
       return m.author.id == message.author.id and m.channel.id == message.channel.id 
     
     # Wait 30 sec for a message that meets the check() requirement 
@@ -493,7 +507,7 @@ async def on_message(message):
       msg = await bot.wait_for("message", check=check, timeout=30)
 
     except Exception as e:
-      print("WARNING: timeout(?):", e)
+      dt_print("WARNING: timeout(?):", e)
       await message.channel.send("Cancelling unregister (no response for 30 sec)")
       return
     
@@ -506,7 +520,7 @@ async def on_message(message):
           user_data_changed = True
 
         except Exception as e:
-          print("Unregistration error:", e)
+          dt_print(f"Error unregistering for user id {user['id']} (object?: {user['object']}):", e)
           await message.channel.send("Oops, there was an error during unregistering")
 
       else:
@@ -514,23 +528,59 @@ async def on_message(message):
 
 
   # Show all rules
-  elif message_content[0] == "/rules":
+  elif message_content[1] == "rules":
+    # chr(10) is used in place of a newline escape character ("\n") to ensure compatibility with older versions of Python that don't allow escape characters in an f-string
     await user["object"].send(f"Rules: {esc_md(str(user['important']))}{chr(10)+'Override is currently enabled (disable by using /override)' if user['override'] else ''}{chr(10)+'Notifications are currently paused (unpause by using /pause)' if user['paused'] else ''}")
 
 
   # Get version
-  elif message_content[0] == "/version":
-    await message.channel.send("**Version:** v2024.9.20\nv2024.9.20 - Bug fixes (the code for this bot is officially now over 500 lines long lmao somebody pls save me-)\nv2024.9.17 - Add support for specifying 'exclude' for rules, allow adding multiple rules at once (of the same include/exclude and category), add category attachments.score.id\nv2024.9.14 - Minor update to notification and command handling, add /pause and /sendhere commands to allow setting to send in specific channels\nv2024.9.12 - Add multi-user support, persistent storage, encryption of API keys\nv2024.9.6 - Prototype complete")
+  elif message_content[1] == "version":
+    await message.channel.send("""**Version:** v2024.10.10
+        v2024.10.10 - Add link to support Discord server, finish support for usage in servers (/getstarted can only be used in DMs, add /flatnotifs as command prefix), update help page, clean some stuff up (THE CODE IS ALMOST 600 LINES LONG AND BUGS ARE A PAIN LMAO)
+        v2024.9.20 - Bug fixes. A lot of bug fixes. (the code for this bot is officially now over 500 lines long lul somebody pls save me-)
+        v2024.9.17 - Add support for specifying 'exclude' for rules, allow adding multiple rules at once (of the same include/exclude and category), add category attachments.score.id
+        v2024.9.14 - Minor update to notification and command handling, add /pause and /sendhere commands to allow setting to send in specific channels
+        v2024.9.12 - Add multi-user support, persistent storage, encryption of API keys
+        v2024.9.6 - Prototype complete
+        """)
 
 
   # Show all commands
-  elif message_content[0] == "/help":
-    await message.channel.send(f"**Help**\n\n**Available commands:**\n`/addrule include/exclude category value`  (Add a rule. More than one value can be specified, seperated by spaces)\n`/removerule value`  (Remove a rule. More than one value can be specified, seperated by spaces)\n`/override`  (Override the rules you have set. You will receive all notifications. Use the same command to toggle on and off)\n`/pause`  (Pause notifications. You will not receive any notifications. Use the same command to toggle on and off)\n`/sendhere`  (Set your notifications to send in the channel where the command was sent. Use the same command to toggle on and off)\n`/unregister`  (Unregister and delete all of your information including your rules, API key, and other preferences)\n`/rules`  (Show all rules you have set)\n`/version`  (Show current version and patch notes)\n`/help`  (You are here!)\n\n**Available categories/values (for /addrule and /removerule):**\n`actor.username`  (Flat.io username, without the @ sign. e.g. `actor.username flat`)\n`type`  (Type of notification. Options: scorePublish, scoreComment, scoreStar, userFollow. e.g. `type userFollow`)\n`attachments.score.id`  (id of a score, without the name. e.g. `attachments.score.id 623f2fab79ac0e0012b95dc8`) \n\n*Answer not here, have feedback, or want to help with development? Contact the developer:*\n*Discord: xarical*\n*Flat.io: @rzyr_*\n*Github: xarical/flat-notifications (Go here for the TODO and known issues lists!)*\n\n-# *Disclaimer: Flat Notifs is not made by Flat.io. It is a project that uses the Flat.io API, made by a member of the community (me). Additionally, it is in beta and worked on when I have time to, so it is not guaranteed to be free of bugs, be updated frequently, or even work. Updates may introduce breaking changes. Logs are collected for debug purposes.*")
+  elif message_content[1] == "help":
+    await message.channel.send("""
+        **Help**
+
+        Welcome to Flat Notifs! This a bot that sends your Flat notifications directly to your Discord DMs or a channel in a server that you specify (that this bot has been added to)! In addition, it allows you to filter by user, notification type, and score id.
+        
+        **Available commands:**
+        `/flatnotifs addrule include/exclude category value`  (Add a rule. More than one value can be specified, seperated by spaces)
+        `/flatnotifs removerule value`  (Remove a rule. More than one value can be specified, seperated by spaces)
+        `/flatnotifs override`  (Override the rules you have set. The bot will notify you of all notifications. Use the same command to toggle on and off)
+        `/flatnotifs pause`  (Pause notifications. The bot will not notify you of any notifications. Use the same command to toggle on and off)
+        `/flatnotifs sendhere`  (Set your notifications to send in the channel where the command was sent. Use the same command to toggle on and off)
+        `/flatnotifs unregister`  (Unregister and delete all of your information including your personal token, rules, and other preferences)
+        `/flatnotifs rules`  (Show all rules you have set)
+        `/flatnotifs version`  (Show current version and patch notes for recent previous versions)
+        `/flatnotifs help`  (You are here!)
+        
+        **Available categories/values (for addrule and removerule):**
+        `actor.username`  (Flat.io username, without the @ sign. e.g. `actor.username flat`)
+        `type`  (Type of notification. Options: scorePublish, scoreComment, scoreStar, userFollow. e.g. `type userFollow`)
+        `attachments.score.id`  (id of a score, without the name. e.g. `attachments.score.id 623f2fab79ac0e0012b95dc8`)
+        
+        *Answer not here, have feedback, or want to help with development? Join the [bot's Discord server](https://discord.gg/sdfjklfjdslkfjsdklj)
+        *(Go there to contact the developer, as well as to get access to the full patch notes, TODO, and known issues lists!)*
+        
+        -# *Disclaimer: Flat Notifs is not made by Flat.io. It is a project that uses the Flat.io API, made by a member of the community (me). Additionally, it is in beta and worked on when I have time to, so it is not guaranteed to be free of bugs, be updated frequently, or even work. Updates may introduce breaking changes. Logs are collected for debug purposes.*
+        """)
+
+  else:
+    await message.channel.send("Whoops! That command was invalid.\nUse  `/flatnotifs help`  for a list of valid commands.")
 
 
-# <-- Run Flask app / Discord bot -->
+""" <-- Run Flask app / Discord bot --> """
 
-# Init Flask app (for keep-alive)
+# Instantiate Flask app (for keep-alive)
 flask_app = Flask(__name__)
 
 @flask_app.route("/", methods=["GET"])
