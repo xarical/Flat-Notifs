@@ -549,6 +549,7 @@ async def on_message(message):
           v2024.9.14 - Minor update to notification and command handling, add /pause and /sendhere commands to allow setting to send in specific channels
           v2024.9.12 - Add multi-user support, persistent storage, encryption of API keys
           v2024.9.6 - Prototype complete
+          (Go to the bot's [Discord server](https://discord.gg/s5xXz8Nfun) for more details and older patch notes!)
           """)
 
 
@@ -575,7 +576,7 @@ async def on_message(message):
           `type`  (Type of notification. Options: scorePublish, scoreComment, scoreStar, userFollow. e.g. `type userFollow`)
           `attachments.score.id`  (id of a score, without the name. e.g. `attachments.score.id 623f2fab79ac0e0012b95dc8`)
           
-          *Answer not here, have feedback, or want to help with development? Join the [bot's Discord server](https://discord.gg/s5xXz8Nfun)
+          *Answer not here, have feedback, or want to help with development? Join the bot's [Discord server](https://discord.gg/s5xXz8Nfun)
           *(Go there to contact the developer, as well as to get access to the full patch notes, TODO, and known issues lists!)*
           
           -# *Disclaimer: Flat Notifs is not made by Flat.io. It is a project that uses the Flat.io API, made by a member of the community (me). Additionally, it is in beta and worked on when I have time to, so it is not guaranteed to be free of bugs, be updated frequently, or even work. Updates may introduce breaking changes. Logs are collected for debug purposes.*
