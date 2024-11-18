@@ -1,0 +1,5 @@
+cryptography
+datasets
+discord.py 
+flask
+requests
