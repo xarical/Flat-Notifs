@@ -4,10 +4,10 @@ Features:
 - multi-user support
 - user registration / unregistration using API keys (OAuth implementation planned for the future)
 - persistently storing user preferences and encrypting API keys
-- filtering rules
+- configure notification filtering rules
 - rule override
 - configure whether to send in DMs or a channel in a server the bot is in
-- pause and unpause
+- pause / unpause
 - error handling
 
 https://xarical.medium.com/making-a-notifications-forwarding-discord-bot-using-python-and-discord-py-16b4ca54702e
