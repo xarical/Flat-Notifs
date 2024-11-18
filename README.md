@@ -1,3 +1,5 @@
+# Flat-Notifs
+
 A Discord bot for Flat.io that forwards notifications from Flat.io, sending them to you in Discord DMs. Built in Python using Discord.py
 
 Features:
