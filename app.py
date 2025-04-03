@@ -211,23 +211,23 @@ async def check_notifs_loop() -> None:
                             else:
                                 url = ""
                         
-                        # Compose message
-                        m = (
-                            f"{helpers.esc_md(element['actor']['printableName'])}: {helpers.esc_md(element['type'])} [(Open on Flat)]({url})\n"
-                            f"-# Rule(s): {helpers.esc_md(str(triggered_rules))}"
-                        )
+                            # Compose message
+                            m = (
+                                f"{helpers.esc_md(element['actor']['printableName'])}: {helpers.esc_md(element['type'])} [(Open on Flat)]({url})\n"
+                                f"-# Rule(s): {helpers.esc_md(str(triggered_rules))}"
+                            )
 
-                        # Send to user's specified channel if configured else send to user
-                        if user["sendhere"]["bool"]:
-                            try:
-                                await user["channel"].send(f"{user['object'].mention} {m}")
-                            except Exception as e:
-                                helpers.log(f"WARNING: unable to find specified channel for user id {user['id']} (object?: {user['object']}):", e)
-                                user["sendhere"]["bool"] = False
-                                await user["object"].send(config.channel_err_msg)
+                            # Send to user's specified channel if configured else send to user
+                            if user["sendhere"]["bool"]:
+                                try:
+                                    await user["channel"].send(f"{user['object'].mention} {m}")
+                                except Exception as e:
+                                    helpers.log(f"WARNING: unable to find specified channel for user id {user['id']} (object?: {user['object']}):", e)
+                                    user["sendhere"]["bool"] = False
+                                    await user["object"].send(config.channel_err_msg)
+                                    await user["object"].send(m)
+                            else:
                                 await user["object"].send(m)
-                        else:
-                            await user["object"].send(m)
 
                     # Update newest element after looping through all of the new elements
                     user["newest_id"] = elements[0]["id"]
@@ -312,8 +312,7 @@ async def on_message(message: discord.Message) -> None:
             # message_content[1] and message_content[2] must exist and only valid command is getstarted
             await message.channel.send(config.welcome_msg)
             return
-        if not isinstance(message.channel, discord.DMChannel):
-            # Make sure is in DMs
+        if not isinstance(message.channel, discord.DMChannel): # Make sure is in DMs
             await message.channel.send("`!flatnotifs getstarted`  must be used in DMs!")
             return
         api_key = message_content[2] # Register with provided API key
@@ -333,23 +332,28 @@ async def on_message(message: discord.Message) -> None:
 # Command handlers
 @bot.command(description="Add a rule.")
 @is_registered()
-async def addrule(ctx: commands.Context, *message_content) -> None:
-    global user_data_changed
-    user = get_user(ctx)
-    if len(message_content) < 5: # LBYL instead of EAFP...
+async def addrule(ctx: commands.Context, include_exclude: str | None = None, category: str | None = None, *input_values: str) -> None:
+    if not include_exclude:
+        await ctx.send(
+            "Please try again and provide include/exclude and a category and value in this format: "
+            "`!flatnotifs addrule include/exclude category value`  (include/exclude was missing)"
+        )
+        return
+    if not category or not input_values:
         await ctx.send(
             "Please try again and provide include/exclude and a category and value in this format: "
             "`!flatnotifs addrule include/exclude category value`  (category or value was missing)"
         )
-    include_exclude = message_content[2]
-    category = message_content[3]
-    input_values = message_content[4:] # ...because slices don't raise errors
+        return
+    
+    global user_data_changed
+    user = get_user(ctx)
 
-    for input_value in input_values:
+    for value in input_values:
         if include_exclude == "include":
-            temp = "+"+input_value
+            temp = "+"+value
         elif include_exclude == "exclude":
-            temp = "-"+input_value
+            temp = "-"+value
         else:
             await ctx.send(
                 "Please try again and provide include/exclude and a category and value in this format: "
@@ -366,25 +370,26 @@ async def addrule(ctx: commands.Context, *message_content) -> None:
 
 @bot.command(description="Remove a rule.")
 @is_registered()
-async def removerule(ctx: commands.Context, *message_content) -> None:
+async def removerule(ctx: commands.Context, *input_values: str) -> None:
+    if not input_values:
+        await ctx.send("Please try again and provide a value in this format:  `!flatnotifs removerule value`")
+        return
+    
     global user_data_changed
     user = get_user(ctx)
-    try:
-        input_values = message_content[2:]
-        for input_value in input_values:
-            found = False
-            for category, values in user["important"].items():
-                for v in [input_value, ("+"+input_value), ("-"+input_value)]: # check value, +value, and -value
-                    if v in values:
-                        values.remove(v)
-                        found = True
-                        await ctx.send(f"Rule {helpers.esc_md(v)} removed from {helpers.esc_md(category)}")
-                        user_data_changed = True
-                        break
-            if not found:
-                await ctx.send(f"Rule {helpers.esc_md(input_value)} not found")
-    except IndexError:
-        await ctx.send("Please try again and provide a value in this format:  `!flatnotifs removerule value`")
+    
+    for input_value in input_values:
+        found = False
+        for category, values in user["important"].items():
+            for v in [input_value, ("+"+input_value), ("-"+input_value)]: # check value, +value, and -value
+                if v in values:
+                    values.remove(v)
+                    found = True
+                    await ctx.send(f"Rule {helpers.esc_md(v)} removed from {helpers.esc_md(category)}")
+                    user_data_changed = True
+                    break
+        if not found:
+            await ctx.send(f"Rule {helpers.esc_md(input_value)} not found")
 
 @bot.command(description="Activate/deactivate overriding of all rules.")
 @is_registered()
@@ -394,12 +399,12 @@ async def override(ctx: commands.Context) -> None:
     if user["override"]:
         await ctx.send(
             "Override disabled (You will now only be notified of notifications that "
-            "match your specified filters. Re-enable by using  `!flatnotifs override)`"
+            "match your specified filters. Re-enable by using  `!flatnotifs override`)"
         )
     else:
         await ctx.send(
             "Override enabled (You will now be notified of all notifications. "
-            "Disable by using  `!flatnotifs override)`"
+            "Disable by using  `!flatnotifs override`)"
         )
     user["override"] = not user["override"]
     user_data_changed = True
@@ -410,7 +415,7 @@ async def pause(ctx: commands.Context) -> None:
     global user_data_changed
     user = get_user(ctx)
     if not user["paused"]:
-        await ctx.send("Notifications paused (You will not be notified of any notifications. Unpause by using  `!flatnotifs pause)`")
+        await ctx.send("Notifications paused (You will not be notified of any notifications. Unpause by using  `!flatnotifs pause`)")
         user["paused"] = True
         user_data_changed = True
     else:
@@ -421,7 +426,7 @@ async def pause(ctx: commands.Context) -> None:
             helpers.log(f"Newest element on unpause for user id {user['id']} (object?: {user['object']}) is ID-{user['newest_id']}") # DEBUG
             user["paused"] = False
             user_data_changed = True
-            await ctx.send("Notifications unpaused (You will now resume being notified of notifications. Pause by using  `!flatnotifs pause)`")
+            await ctx.send("Notifications unpaused (You will now resume being notified of notifications. Pause by using  `!flatnotifs pause`)")
         except Exception as e:
             try:
                 helpers.log(f"WARNING: unable to check notifications for user id {user['id']} (object?: {user['object']}):", e)
@@ -446,6 +451,7 @@ async def sendhere(ctx: commands.Context) -> None:
     else:
         if isinstance(ctx.channel, discord.DMChannel): # Check that it's not DMs
             await ctx.send("sendhere can only be set in non-DM channels.")
+            return
         await ctx.send( # Ask for confirmation
             "Are you sure you want to switch your notification send channel to here? (Y/N)\n"
             "If this is a public channel, that means anyone can see the notifications that the bot sends you."
@@ -518,7 +524,7 @@ async def unregister(ctx: commands.Context) -> None:
 async def updatetoken(ctx: commands.Context, api_key: str | None = None) -> None:
     global user_data_changed
     user = get_user(ctx)
-    if not isinstance(ctx.channel, discord.DMChannel):
+    if not isinstance(ctx.channel, discord.DMChannel): # Make sure is in DMs
         await ctx.send("`!flatnotifs updatetoken` must be used in DMs!")
         return
     if api_key is None:
