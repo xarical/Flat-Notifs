@@ -126,7 +126,6 @@ async def aiohttp_refresh_loop() -> None:
 async def check_notifs_loop() -> None:
     """Check notifications every change_interval_calc seconds."""    
     check_notifs_loop.change_interval(seconds=change_interval_calc())
-    helpers.log("Interval is", change_interval_calc(), "seconds") # DEBUG
     global user_data_changed
     if user_data_changed:
         filtered_user_data = filter_user_data(exclude={"object", "newest_id", "channel"})
