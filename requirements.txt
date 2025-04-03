@@ -1,0 +1,5 @@
+aiohttp
+cryptography
+discord.py 
+flask
+huggingface_hub
