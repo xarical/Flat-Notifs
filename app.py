@@ -77,7 +77,7 @@ async def register_user(api_key, message) -> None:
     try: # Read API to see if API key was valid
         elements = await aiohttp_manager.read_api(config.api_url, api_key)
     except Exception as e: # handle edge case http codes
-        helpers.log(e, f"during registration of user id {message.author.id} (object?: {message.author})")
+        helpers.log(f"Edge case http code handler during registration of user id {message.author.id} ({message.author}):", e)
         await message.channel.send(
             "Uh oh, there was an error during registration. Please try again later "
             "(if it doesn't resolve on its own soon, please join the bot's "
@@ -108,7 +108,7 @@ async def register_user(api_key, message) -> None:
             "To learn how to start setting rules, use the command  `!flatnotifs help` )"
         )
         user_data_changed = True
-        helpers.log(f"User id {user['id']} (object?: {user['object']}) registered, newest element on startup is ID-{elements[0]['id']}") # DEBUG
+        helpers.log(f"User id {user['id']} ({user['object']}) registered, newest element on startup is ID-{elements[0]['id']}") # DEBUG
     else:
         await message.channel.send(
             "Please try again and provide a valid personal token "
@@ -127,7 +127,7 @@ async def check_notifs_loop() -> None:
     """Check notifications every change_interval_calc seconds."""    
     check_notifs_loop.change_interval(seconds=change_interval_calc())
     global user_data_changed
-    if user_data_changed:
+    if user_data_changed: # Update dataset
         filtered_user_data = filter_user_data(exclude={"object", "newest_id", "channel"})
         datasets.update_dataset(filtered_user_data, dataset_id, config.datafile_name, hf_api_key)
         user_data_changed = False
@@ -140,7 +140,7 @@ async def check_notifs_loop() -> None:
             try:
                 elements = await aiohttp_manager.read_api(config.api_url, api_key)
             except Exception as e: # handle edge case http codes
-                helpers.log(e)
+                helpers.log("Edge case http code handler:", e)
                 continue
 
             if not user["object"]: # Try to fetch user object if it hasn't been set yet
@@ -148,7 +148,7 @@ async def check_notifs_loop() -> None:
                     user["object"] = await bot.fetch_user(user["id"])
                 except Exception as e:
                     user["paused"] = True
-                    helpers.log(f"Error, user id {user['id']} (object?: {user['object']}) not found:", e)
+                    helpers.log(f"Error, user id {user['id']} ({user['object']}) not found:", e)
                     continue
 
             if not user["newest_id"]: # Check if user newest id not set
@@ -158,10 +158,10 @@ async def check_notifs_loop() -> None:
                 continue
 
             if elements: # Check that there are elements
-                # Don't loop if the current element matches the newest element
-                if elements[0]['id'] != user["newest_id"]:
+                if elements[0]['id'] != user["newest_id"]: # Don't loop if current element matches newest element
                     for element in elements:
-                        # Break loop if you find the current element that matches the newest element
+                        # Break loop if you find current element that matches newest element
+                        # FIXME: What if the newest element was deleted?
                         if element['id'] == user["newest_id"]:
                             break
 
@@ -220,9 +220,9 @@ async def check_notifs_loop() -> None:
                             # Send to user's specified channel if configured else send to user
                             if user["sendhere"]["bool"]:
                                 try:
-                                    await user["channel"].send(f"{user['object'].mention} {m}")
+                                    await user["channel"].send(f"{user['object'].mention + ' ' if user['sendhere']['mention'] else ''}{m}")
                                 except Exception as e:
-                                    helpers.log(f"WARNING: unable to find specified channel for user id {user['id']} (object?: {user['object']}):", e)
+                                    helpers.log(f"Unable to find specified channel for user id {user['id']} ({user['object']}):", e)
                                     user["sendhere"]["bool"] = False
                                     await user["object"].send(config.channel_err_msg)
                                     await user["object"].send(m)
@@ -231,7 +231,7 @@ async def check_notifs_loop() -> None:
 
                     # Update newest element after looping through all of the new elements
                     user["newest_id"] = elements[0]["id"]
-                    helpers.log(f"Newest id updated to {user['newest_id']} for user id {user['id']} (object?: {user['object']})")
+                    helpers.log(f"Newest id updated to {user['newest_id']} for user id {user['id']} ({user['object']})") # DEBUG
 
             else: # if no elements
                 user["paused"] = True
@@ -245,7 +245,6 @@ async def check_notifs_loop() -> None:
 @bot.event
 async def on_ready() -> None:
     """Prepare on Discord bot startup."""
-
     helpers.log("Bot has connected to Discord! :3")
 
     # Start the aiohttp_refresh task
@@ -253,7 +252,7 @@ async def on_ready() -> None:
     try:
         aiohttp_refresh_loop.start()
     except RuntimeError as e:
-        helpers.log("Error starting aiohttp_refresh_loop: ", e)
+        helpers.log("Error starting aiohttp_refresh_loop:", e)
     
     helpers.log("Processing users...")
     for user in user_data:
@@ -263,23 +262,23 @@ async def on_ready() -> None:
                 if user["sendhere"]["bool"]:
                     user["channel"] = await bot.fetch_channel(user["sendhere"]["channel_id"])
             except Exception as e:
-                helpers.log(f"WARNING: unable to find specified channel for user id {user['id']} (object?: {user['object']}):", e)
+                helpers.log(f"Unable to find specified channel for user id {user['id']} ({user['object']}):", e)
                 user["sendhere"]["bool"] = False
                 await user["object"].send(config.channel_err_msg)
         except Exception as e:
-            raise Exception(f"Error getting user id {user['id']} (object?: {user['object']}) or user not found:", e)
+            raise Exception(f"Error getting user id {user['id']} ({user['object']}) or user not found:", e)
         try: # Set newest element per user
             api_key = fernet.decrypt(user["api_key"].encode()).decode()
             elements = await aiohttp_manager.read_api(config.api_url, api_key)
             user["newest_id"] = elements[0]["id"]
-            helpers.log(f"Newest element on startup for user id {user['id']} (object?: {user['object']}) is ID-{user['newest_id']}")
+            helpers.log(f"Newest element on startup for user id {user['id']} ({user['object']}) is ID-{user['newest_id']}") # DEBUG
         except Exception as e:
             try:
-                helpers.log(f"WARNING: unable to check notifications for user id {user['id']} (object?: {user['object']}):", e)
+                helpers.log(f"Unable to check notifications for user id {user['id']} ({user['object']}):", e)
                 user["paused"] = True
                 await user["object"].send(config.check_err_msg)
             except Exception as e2:
-                raise Exception(f"Error sending 'unable to check notifications' message to user id {user['id']} (object?: {user['object']}):", e2)
+                raise Exception(f"Error sending 'unable to check notifications' message to user id {user['id']} ({user['object']}):", e2)
         await asyncio.sleep(config.delay_amounts["per_user_startup"]) # wait between checks
 
     # Set bot status
@@ -294,7 +293,7 @@ async def on_ready() -> None:
     try:
         check_notifs_loop.start()
     except RuntimeError as e:
-        helpers.log("Error starting check_notifs_loop: ", e)
+        helpers.log("Error starting check_notifs_loop:", e)
 
 @bot.event
 async def on_message(message: discord.Message) -> None:
@@ -423,27 +422,28 @@ async def pause(ctx: commands.Context) -> None:
             api_key = fernet.decrypt(user["api_key"].encode()).decode()
             elements = await aiohttp_manager.read_api(config.api_url, api_key)
             user["newest_id"] = elements[0]["id"]
-            helpers.log(f"Newest element on unpause for user id {user['id']} (object?: {user['object']}) is ID-{user['newest_id']}") # DEBUG
+            helpers.log(f"Newest element on unpause for user id {user['id']} ({user['object']}) is ID-{user['newest_id']}") # DEBUG
             user["paused"] = False
             user_data_changed = True
             await ctx.send("Notifications unpaused (You will now resume being notified of notifications. Pause by using  `!flatnotifs pause`)")
         except Exception as e:
             try:
-                helpers.log(f"WARNING: unable to check notifications for user id {user['id']} (object?: {user['object']}):", e)
+                helpers.log(f"Unable to check notifications for user id {user['id']} ({user['object']}):", e)
                 user["paused"] = True
                 user_data_changed = True
                 await ctx.send(config.check_err_msg)
             except Exception as e2:
                 raise Exception(
                     "Error sending 'unable to check notifications on unpause' "
-                    f"message to user id {user['id']} (object?: {user['object']}):", e2
+                    f"message to user id {user['id']} ({user['object']}):", e2
                 )
 
 @bot.command(description="Change your notification send channel to current channel.")
 @is_registered()
-async def sendhere(ctx: commands.Context) -> None:
+async def sendhere(ctx: commands.Context, mention_flag: str | None = None) -> None:
     global user_data_changed
     user = get_user(ctx)
+    
     if user["sendhere"]["bool"]:
         user["sendhere"]["bool"] = False
         await ctx.send("Successfully changed your notification channel back to default (your DMs)")
@@ -452,6 +452,9 @@ async def sendhere(ctx: commands.Context) -> None:
         if isinstance(ctx.channel, discord.DMChannel): # Check that it's not DMs
             await ctx.send("sendhere can only be set in non-DM channels.")
             return
+        if not mention_flag or (mention_flag.lower() not in {"mention", "nomention"}): # Validate mention_flag
+            await ctx.send("Please try again and provide mention or nomention in this format:  `!flatnotifs sendhere mention/nomention`")
+            return
         await ctx.send( # Ask for confirmation
             "Are you sure you want to switch your notification send channel to here? (Y/N)\n"
             "If this is a public channel, that means anyone can see the notifications that the bot sends you."
@@ -459,13 +462,12 @@ async def sendhere(ctx: commands.Context) -> None:
 
         def check(m: discord.Message) -> bool:
             """Function to check that it's still the same user in the same channel"""
-            helpers.log(m.author, "sendhere check:", (m.author.id == ctx.author.id and m.channel.id == ctx.channel.id)) # DEBUG
             return m.author.id == ctx.author.id and m.channel.id == ctx.channel.id 
             
         try: # Wait 30 sec for a message that meets the check() requirement 
             msg = await bot.wait_for("message", check=check, timeout=30)
         except Exception as e:
-            helpers.log("WARNING: sendhere timeout:", e)
+            helpers.log("Sendhere timeout:", e)
             await ctx.send("Cancelling sendhere (no response for 30 sec)")
             return
         else:
@@ -473,14 +475,15 @@ async def sendhere(ctx: commands.Context) -> None:
                 try:
                     user["sendhere"]["channel_id"] = ctx.channel.id
                     user["channel"] = ctx.channel
+                    user["sendhere"]["mention"] = (mention_flag.lower() == "mention") # Given it was validated, if not mention then nomention
                     await user["channel"].send(
                         "Successfully changed your notification channel to this channel. "
-                        "You can disable this at any time using /sendhere"
+                        "You can disable this at any time using !flatnotifs sendhere"
                     )
-                    user["sendhere"]["bool"] = True
+                    user["sendhere"]["bool"] = True # Don't change bool unless everything went smoothly
                     user_data_changed = True
                 except Exception as e:
-                    helpers.log(f"Error setting sendhere for user id {user['id']} (object?: {user['object']}):", e)
+                    helpers.log(f"Error setting sendhere for user id {user['id']} ({user['object']}):", e)
                     await ctx.send("[DEBUG]: Oops, there was an error while setting sendhere!")
             else:
                 await ctx.send("Cancelling sendhere (received a response other than 'Y')")
@@ -498,23 +501,22 @@ async def unregister(ctx: commands.Context) -> None:
 
     def check(m: discord.Message) -> bool:
         """Function to check that it's still the same user in the same channel"""
-        helpers.log(m.author, "unregister check:", (m.author.id == ctx.author.id and m.channel.id == ctx.channel.id)) # DEBUG
         return m.author.id == ctx.author.id and m.channel.id == ctx.channel.id 
     
     try: # Wait 30 sec for a message that meets the check() requirement 
         msg = await bot.wait_for("message", check=check, timeout=30)
     except Exception as e:
-        helpers.log("WARNING: unregister timeout:", e)
+        helpers.log("Unregister timeout:", e)
         await ctx.send("Cancelling unregister (no response for 30 sec)")
         return
     else:
         if msg.content.upper() == "Y": # Unregister the user
             try:
                 user_data.remove(user)
-                await ctx.send("Successfully unregistered. You can re-register by using the command /getstarted")
+                await ctx.send("Successfully unregistered. You can re-register by using the command !flatnotifs getstarted")
                 user_data_changed = True
             except Exception as e:
-                helpers.log(f"Error unregistering for user id {user['id']} (object?: {user['object']}):", e)
+                helpers.log(f"Error unregistering for user id {user['id']} ({user['object']}):", e)
                 await ctx.send("[DEBUG]: Oops, there was an error during unregistering!")
         else:
             await ctx.send("Cancelling unregister (received a response other than 'Y')")
@@ -522,14 +524,15 @@ async def unregister(ctx: commands.Context) -> None:
 @bot.command(description="Update your personal token.")
 @is_registered()
 async def updatetoken(ctx: commands.Context, api_key: str | None = None) -> None:
-    global user_data_changed
-    user = get_user(ctx)
     if not isinstance(ctx.channel, discord.DMChannel): # Make sure is in DMs
         await ctx.send("`!flatnotifs updatetoken` must be used in DMs!")
         return
     if api_key is None:
         await ctx.send("Please provide your new personal token.")
         return
+    
+    global user_data_changed
+    user = get_user(ctx)
     await ctx.send( # Ask for confirmation
         "Are you sure you want to update your personal token? (Y/N)\n"
         "Updating your personal token will invalidate your old token. "
@@ -538,13 +541,12 @@ async def updatetoken(ctx: commands.Context, api_key: str | None = None) -> None
 
     def check(m: discord.Message) -> bool:
         """Function to check that it's still the same user in the same channel"""
-        helpers.log(m.author, "updatetoken check:", (m.author.id == ctx.author.id and m.channel.id == ctx.channel.id)) # DEBUG
         return m.author.id == ctx.author.id and m.channel.id == ctx.channel.id 
     
     try: # Wait 30 sec for a message that meets the check() requirement 
         msg = await bot.wait_for("message", check=check, timeout=30)
     except Exception as e:
-        helpers.log("WARNING: updatetoken timeout:", e)
+        helpers.log("Updatetoken timeout:", e)
         await ctx.send("Cancelling updatetoken (no response for 30 sec)")
         return
     else:
@@ -552,7 +554,7 @@ async def updatetoken(ctx: commands.Context, api_key: str | None = None) -> None
             try: # Read API to see if API key was valid
                 elements = await aiohttp_manager.read_api(config.api_url, api_key)
             except Exception as e: # handle edge case http codes
-                helpers.log(e, f"during updatetoken of user id {ctx.author.id} (object?: {ctx.author})")
+                helpers.log(f"Edge case http code handler during updatetoken of user id {ctx.author.id} ({ctx.author}):", e)
                 await ctx.channel.send(
                     "Uh oh, there was an error during updatetoken. Please try again later "
                     "(if it doesn't resolve on its own soon, please join the bot's "
@@ -565,7 +567,7 @@ async def updatetoken(ctx: commands.Context, api_key: str | None = None) -> None
                 user["newest_id"] = elements[0]["id"]
                 await ctx.send("Successfully updated your personal token!")
                 user_data_changed = True
-                helpers.log(f"User id {user['id']} (object?: {user['object']}) updated token, newest element on startup is ID-{elements[0]['id']}") # DEBUG
+                helpers.log(f"User id {user['id']} ({user['object']}) updated token, newest element on startup is ID-{elements[0]['id']}") # DEBUG
             else:
                 await ctx.send(
                     "Please try again and provide a valid personal token "
@@ -581,8 +583,8 @@ async def rules(ctx: commands.Context) -> None:
     # chr(10) is used in place \n to ensure compatibility with older versions of Python that don't allow escape chars in an f-string
     await ctx.author.send(
         f"Rules: {helpers.esc_md(json.dumps(user['important'], indent=4))}"
-        f"{chr(10)+'Override is currently enabled (disable by using /override)' if user['override'] else ''}"
-        f"{chr(10)+'Notifications are currently paused (unpause by using /pause)' if user['paused'] else ''}"
+        f"{chr(10)+'Override is currently enabled (disable by using !flatnotifs override)' if user['override'] else ''}"
+        f"{chr(10)+'Notifications are currently paused (unpause by using !flatnotifs pause)' if user['paused'] else ''}"
     )
 
 @bot.command(description="Show the version of the bot.")
@@ -601,7 +603,7 @@ async def help(ctx: commands.Context) -> None:
 @commands.is_owner()
 async def sync(ctx: commands.Context) -> None:
     synced = await bot.tree.sync()
-    await ctx.send(f"Synced {len(synced)} commands")
+    await ctx.send(f"Synced {len(synced)} command(s)")
 
 @bot.hybrid_command(description="Hello world!")
 async def hello(ctx: commands.Context) -> None:

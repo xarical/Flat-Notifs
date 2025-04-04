@@ -3,21 +3,23 @@ port = 7860
 
 datafile_name = "data.json"
 
+#FIXME: As you scale, 30 or even 15 seconds per user might be too long
 delay_amounts = {
     "per_loop_default": 60,
     "per_user": 30,
     "per_user_startup": 15
 }
 
-api_url = "https://api.flat.io/v2/me/notifications?expand=actor,score&returnOptInScoresInvitations=true&limit=10"
+#FIXME: What if more than 20 notifications were sent within the loop interval?
+api_url = f"https://api.flat.io/v2/me/notifications?expand=actor,score&returnOptInScoresInvitations=true&limit=20"
 discord_url = "https://discord.gg/s5xXz8Nfun"
 
 version_msg = f"""
 **Current version:**
-v2025.3.13 - Handle API and server errors more gracefully, improve maintainability of codebase
+v2025.x.xx - Mention flag added to sendhere, refactor to use user IDs instead of usernames, bug fixes
 
 **Previous version:**
-v2025.2.27 - Change command prefix from "/" to "!", bug fixes
+v2025.3.13 - Handle API and server errors more gracefully, improve maintainability of codebase
 
 *(Go to the bot's [Discord server](<{discord_url}>) for more details and older patch notes!)*
 """
@@ -51,7 +53,7 @@ f"""
 `!flatnotifs removerule value`  (Remove a rule. More than one value can be specified, seperated by spaces)
 `!flatnotifs override`  (Override the rules you have set. The bot will notify you of all notifications. Use the same command to toggle on and off)
 `!flatnotifs pause`  (Pause notifications. The bot will not notify you of any notifications. Use the same command to toggle on and off)
-`!flatnotifs sendhere`  (Set your notifications to send in the channel where the command was sent. Use the same command to toggle on and off)
+`!flatnotifs sendhere mention/nomention`  (Set your notifications to send in the channel where the command was sent. Use the same command to toggle on and off. When toggling on, specify whether you want to be @ mentioned)
 `!flatnotifs unregister`  (Unregister and delete all of your information including your personal token, rules, and other preferences)
 `!flatnotifs updatetoken token`  (Update your personal token)
 `!flatnotifs rules`  (Show all rules you have set)
