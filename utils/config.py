@@ -3,20 +3,37 @@ port = 7860
 
 datafile_name = "data.json"
 
-#FIXME: As you scale, 30 or even 15 seconds per user might be too long
+"""
+NOTE: As of 4/4/25, rate limits are as follows:
+With API key: 7200 / hour / user
+Without API key: 1800 / hour / all anonymous users
+
+A given user will read the notif API up to once every 15 seconds, or up
+to 4 times a minute, i.e. 240 calls an hour.
+Assume a given user has 50 actor.username rules configured; assume they
+will view their rules for the first time, add 50 actor.username rules,
+and then remove 50 actor.username rules, once an hour, for a total of
+150 calls an hour.
+This results in a grand total of 390 calls an hour, well under the rate limit.
+"""
+# FIXME: As you scale, cap load at 20, 15 sec per user, and 0.5 sec per convert might be too slow
+max_api_load = 20
 delay_amounts = {
-    "per_loop_default": 60,
-    "per_user": 30,
-    "per_user_startup": 15
+    "per_loop_default": 60, # seconds
+    "per_user": 15, # seconds
+    "per_user_startup": 15, # seconds
+    "per_convert": 0.5, # seconds
 }
 
-#FIXME: What if more than 20 notifications were sent within the loop interval?
-api_url = f"https://api.flat.io/v2/me/notifications?expand=actor,score&returnOptInScoresInvitations=true&limit=20"
+# FIXME: What if more than 15 notifications were sent within the loop interval?
+notif_cache_length = 15
+notif_api_url = f"https://api.flat.io/v2/me/notifications?expand=actor,score&returnOptInScoresInvitations=true&limit={notif_cache_length}"
+user_api_url = "https://api.flat.io/v2/users/{identifier}"
 discord_url = "https://discord.gg/s5xXz8Nfun"
 
 version_msg = f"""
 **Current version:**
-v2025.x.xx - Mention flag added to sendhere, refactor to use user IDs instead of usernames, bug fixes
+v2025.4.4 - Mention flag added to sendhere, refactor to use user IDs (for checking) in combination with usernames (for input/output), bug fixes
 
 **Previous version:**
 v2025.3.13 - Handle API and server errors more gracefully, improve maintainability of codebase
@@ -46,8 +63,6 @@ help_msg = [ f"""
 
 Welcome to Flat Notifs! This a bot that sends your Flat notifications directly to your Discord DMs or a channel in a server that you specify (that this bot has been added to)! In addition, it allows you to filter by user, notification type, and score id.
 
-""",
-f"""
 **Available commands:**
 `!flatnotifs addrule include/exclude category value`  (Add a rule. More than one value can be specified, seperated by spaces)
 `!flatnotifs removerule value`  (Remove a rule. More than one value can be specified, seperated by spaces)
@@ -60,7 +75,9 @@ f"""
 `!flatnotifs version`  (Show patch notes for the current and previous version)
 `!flatnotifs help`  (You are here!)
 
-**Available categories/values (for addrule and removerule):**
+**Available categories/values (for addrule and removerule):**        
+""",
+f"""
 `actor.username`  (Flat.io username, without the @ sign. e.g. `actor.username flat`)
 `type`  (Type of notification. Options: scorePublish, scoreComment, scoreStar, userFollow. e.g. `type userFollow`)
 `attachments.score.id`  (id of a score, without the name. e.g. `attachments.score.id 623f2fab79ac0e0012b95dc8`)

@@ -1,4 +1,5 @@
 import asyncio
+from collections import deque
 import json
 import os
 from typing import Callable
@@ -14,14 +15,16 @@ import utils.helpers as helpers
 import utils.keepalive as keepalive
 
 
+"""<-- VARIABLES -->"""
+
 # Instantiate Discord bot
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(
-    command_prefix="!flatnotifs ", 
-    case_insensitive=True, 
-    strip_after_prefix=True, 
-    help_command=None, 
+    command_prefix="!flatnotifs ",
+    case_insensitive=True,
+    strip_after_prefix=True,
+    help_command=None,
     intents=intents,
 )
 
@@ -33,19 +36,20 @@ fernet = Fernet(os.environ["FERNET_KEY"].encode()) # Fernet key
 
 # Other variables
 aiohttp_manager = AiohttpManager()
-user_data_changed = False
-user_data = datasets.load_dataset(dataset_id, config.datafile_name, hf_api_key)
+user_data_changed = False # Global
+user_data = datasets.load_dataset(dataset_id, config.datafile_name, hf_api_key) # Global
 
 
-# Misc functions
-def change_interval_calc():
+"""<-- MISC FUNCTIONS -->"""
+
+def change_interval_calc() -> int:
     """Length of user_data times x, unless len(user_data) is 0 then default to y."""
     return (
         len(user_data) * config.delay_amounts["per_user"] 
         if len(user_data) > 0 else config.delay_amounts["per_loop_default"]
     )
 
-def filter_user_data(exclude: set[str]):
+def filter_user_data(exclude: set[str]) -> list[dict]:
     """Don't write any of the excluded properties."""
     return [
         {
@@ -54,6 +58,20 @@ def filter_user_data(exclude: set[str]):
         }
         for user in user_data
     ]
+
+async def convert_identifier(identifier: str, convert_to: str, api_key: str) -> str:
+    """Convert id to username and vice versa."""
+    try:
+        data = await aiohttp_manager.read_api(config.user_api_url.format(identifier=identifier), api_key)
+        await asyncio.sleep(config.delay_amounts["per_convert"])
+        helpers.log(f"{identifier} converted to {convert_to}: {data[convert_to]}") # DEBUG
+        return data[convert_to]
+    except KeyError as e:
+        helpers.log(f"Error during identifier convert getting {convert_to} from {data}:", e)
+        return identifier
+    except Exception as e:
+        helpers.log("Edge case http code handler during identifier convert:", e)
+        return identifier
 
 def get_user(ctx: commands.Context | discord.Message) -> dict | None:
     """Get the user from user_data."""
@@ -66,16 +84,15 @@ def is_registered() -> Callable[[commands.Context], bool]:
     async def func(ctx: commands.Context) -> bool:
         user = get_user(ctx)
         if not user:
-            await ctx.channel.send(config.welcome_msg)
+            await ctx.send(config.welcome_msg)
         return bool(user)
-    
     return commands.check(func)
 
 async def register_user(api_key, message) -> None:
     """Register the user."""
     global user_data_changed
     try: # Read API to see if API key was valid
-        elements = await aiohttp_manager.read_api(config.api_url, api_key)
+        elements = await aiohttp_manager.read_api(config.notif_api_url, api_key)
     except Exception as e: # handle edge case http codes
         helpers.log(f"Edge case http code handler during registration of user id {message.author.id} ({message.author}):", e)
         await message.channel.send(
@@ -100,7 +117,7 @@ async def register_user(api_key, message) -> None:
                 "bool": False
             },
             "object": message.author,
-            "newest_id": elements[0]["id"]
+            "processed_ids": deque(reversed([element['id'] for element in elements]), maxlen=config.notif_cache_length)
         }
         user_data.append(user)
         await message.channel.send(
@@ -108,7 +125,6 @@ async def register_user(api_key, message) -> None:
             "To learn how to start setting rules, use the command  `!flatnotifs help` )"
         )
         user_data_changed = True
-        helpers.log(f"User id {user['id']} ({user['object']}) registered, newest element on startup is ID-{elements[0]['id']}") # DEBUG
     else:
         await message.channel.send(
             "Please try again and provide a valid personal token "
@@ -116,7 +132,8 @@ async def register_user(api_key, message) -> None:
         )
 
 
-# Loops
+"""<-- LOOPS -->"""
+
 @tasks.loop(hours=24)
 async def aiohttp_refresh_loop() -> None:
     """Refresh the aiohttp session every 24 hours."""
@@ -128,7 +145,7 @@ async def check_notifs_loop() -> None:
     check_notifs_loop.change_interval(seconds=change_interval_calc())
     global user_data_changed
     if user_data_changed: # Update dataset
-        filtered_user_data = filter_user_data(exclude={"object", "newest_id", "channel"})
+        filtered_user_data = filter_user_data(exclude={"object", "processed_ids", "channel"})
         datasets.update_dataset(filtered_user_data, dataset_id, config.datafile_name, hf_api_key)
         user_data_changed = False
 
@@ -138,7 +155,7 @@ async def check_notifs_loop() -> None:
             api_key = fernet.decrypt(user["api_key"].encode()).decode()
             excluded = False
             try:
-                elements = await aiohttp_manager.read_api(config.api_url, api_key)
+                elements = await aiohttp_manager.read_api(config.notif_api_url, api_key)
             except Exception as e: # handle edge case http codes
                 helpers.log("Edge case http code handler:", e)
                 continue
@@ -151,97 +168,113 @@ async def check_notifs_loop() -> None:
                     helpers.log(f"Error, user id {user['id']} ({user['object']}) not found:", e)
                     continue
 
-            if not user["newest_id"]: # Check if user newest id not set
+            if not user["processed_ids"] or not elements: # Check if user processed ids set and that there are elements
                 user["paused"] = True
                 user_data_changed = True
                 await user["object"].send(config.check_err_msg)
                 continue
 
-            if elements: # Check that there are elements
-                if elements[0]['id'] != user["newest_id"]: # Don't loop if current element matches newest element
-                    for element in elements:
-                        # Break loop if you find current element that matches newest element
-                        # FIXME: What if the newest element was deleted?
-                        if element['id'] == user["newest_id"]:
+            for element in elements:
+                # Break if element already processed (everything after is also already processed)
+                if element['id'] in user["processed_ids"]:
+                    break
+
+                # Iterate through important rules, append to triggered_rules
+                is_important = False 
+                triggered_rules = []
+                for category, values in user["important"].items():
+                    nested_category = ("actor.id" if category == "actor.username" else category).split('.') # split by dots
+                    
+                    # Iterate until you reach the bottom nested category; if not found, continue to next rule
+                    value = element
+                    for k in nested_category:
+                        value = value.get(k, None)
+                        if value is None:
+                            break
+                    if value is None:
+                        continue
+                
+                    # Check if excluded
+                    if ("-"+value) in values:
+                        excluded = True
+                        if category == "actor.username": # If actor.username
+                            if not values["-"+value]: # Populate username if missing
+                                helpers.log("Populated", values["-"+value]) # DEBUG
+                                values["-"+value] = await convert_identifier(value, "username", api_key)
+                                user_data_changed = True
+                            elif values["-"+value] != element['actor']['username']: # Update username if changed
+                                helpers.log("Updated", values["-"+value], "to", element['actor']['username']) # DEBUG
+                                values["-"+value] = element['actor']['username']
+                                user_data_changed = True
+                            val = values["-"+value]
+                        else:
+                            val = value
+                        triggered_rules.append(category + ": -" + val)
+                        if not user["override"]:
                             break
 
-                        # Iterate through important rules, append to triggered_rules
-                        is_important = False 
-                        triggered_rules = []
-                        for category, values in user["important"].items():
-                            nested_category = category.split('.') # Split by dots
-                            
-                            # Iterate until you reach the bottom nested category; if not found, continue to next rule
-                            value = element
-                            for k in nested_category:
-                                value = value.get(k, None)
-                                if value is None:
-                                    break
-                            if value is None:
-                                continue
-                        
-                            # Check if excluded
-                            if ("-"+value) in values:
-                                excluded = True
-                                triggered_rules.append(category + ": -" + value)
-                                if not user["override"]:
-                                    break
+                    # Check if included
+                    if ("+"+value) in values:
+                        if not excluded:
+                            is_important = True
+                        if category == "actor.username": # If actor.username
+                            if not values["+"+value]: # Populate username if missing
+                                helpers.log("Populated", values["+"+value]) # DEBUG
+                                values["+"+value] = await convert_identifier(value, "username", api_key)
+                                user_data_changed = True
+                            elif values["+"+value] != element['actor']['username']: # Update username if changed
+                                helpers.log("Updated", values["+"+value], "to", element['actor']['username']) # DEBUG
+                                values["+"+value] = element['actor']['username']
+                                user_data_changed = True
+                            val = values["+"+value]
+                        else:
+                            val = value
+                        triggered_rules.append(category + ": +" + val)
+                    
+                helpers.log(
+                    f"{element['actor']['printableName']}: {element['type']}, ID-{element['id']} "
+                    f"{'is' if is_important else 'is not'} categorized as important"
+                    f"{' by rule(s): ' + str(triggered_rules) if is_important else '.'}"
+                ) # DEBUG
 
-                            # Check if included
-                            if ("+"+value) in values:
-                                if not excluded:
-                                    is_important = True
-                                triggered_rules.append(category + ": +" + value)
-                            
-                        helpers.log(
-                            f"{element['actor']['printableName']}: {element['type']}, ID-{element['id']} "
-                            f"{'is' if is_important else 'is not'} categorized as important"
-                            f"{' by rule(s): ' + str(triggered_rules) if is_important else '.'}"
-                        ) # DEBUG
+                # Output once all rules have been iterated through
+                if is_important or user["override"]:
+                    # Set url if applicable
+                    if element['type'] == "scoreComment":
+                        url = element['attachments']['score']['htmlUrl'] + "#c-" + element['attachments']['scoreComment'] + "\n"
+                    elif element['type'] in {"scorePublication", "scoreStar", "scoreInvitation"}:
+                        url = element['attachments']['score']['htmlUrl'] + "\n"               
+                    elif element['type'] == "userFollow":
+                        url = element['actor']['htmlUrl'] + "\n"
+                    else:
+                        url = ""
+                
+                    # Compose message
+                    m = (
+                        f"{helpers.esc_md(element['actor']['printableName'])}: {helpers.esc_md(element['type'])} [(Open on Flat)]({url})\n"
+                        f"-# Rule(s): {helpers.esc_md(str(triggered_rules))}"
+                    )
 
-                        # Output once all rules have been iterated through
-                        if is_important or user["override"]:
-                            # Set url if applicable
-                            if element['type'] == "scoreComment":
-                                url = element['attachments']['score']['htmlUrl'] + "#c-" + element['attachments']['scoreComment'] + "\n"
-                            elif element['type'] in ["scorePublication", "scoreStar", "scoreInvitation"]:
-                                url = element['attachments']['score']['htmlUrl'] + "\n"               
-                            elif element['type'] == "userFollow":
-                                url = element['actor']['htmlUrl'] + "\n"
-                            else:
-                                url = ""
-                        
-                            # Compose message
-                            m = (
-                                f"{helpers.esc_md(element['actor']['printableName'])}: {helpers.esc_md(element['type'])} [(Open on Flat)]({url})\n"
-                                f"-# Rule(s): {helpers.esc_md(str(triggered_rules))}"
-                            )
+                    # Send to user's specified channel if configured else send to user
+                    if user["sendhere"]["bool"]:
+                        try:
+                            await user["channel"].send(f"{user['object'].mention + ' ' if user['sendhere']['mention'] else ''}{m}")
+                        except Exception as e:
+                            helpers.log(f"Unable to find specified channel for user id {user['id']} ({user['object']}):", e)
+                            user["sendhere"]["bool"] = False
+                            await user["object"].send(config.channel_err_msg)
+                            await user["object"].send(m)
+                    else:
+                        await user["object"].send(m)
 
-                            # Send to user's specified channel if configured else send to user
-                            if user["sendhere"]["bool"]:
-                                try:
-                                    await user["channel"].send(f"{user['object'].mention + ' ' if user['sendhere']['mention'] else ''}{m}")
-                                except Exception as e:
-                                    helpers.log(f"Unable to find specified channel for user id {user['id']} ({user['object']}):", e)
-                                    user["sendhere"]["bool"] = False
-                                    await user["object"].send(config.channel_err_msg)
-                                    await user["object"].send(m)
-                            else:
-                                await user["object"].send(m)
-
-                    # Update newest element after looping through all of the new elements
-                    user["newest_id"] = elements[0]["id"]
-                    helpers.log(f"Newest id updated to {user['newest_id']} for user id {user['id']} ({user['object']})") # DEBUG
-
-            else: # if no elements
-                user["paused"] = True
-                user_data_changed = True
-                await user["object"].send(config.check_err_msg)
+                # Add id to the list of processed ids
+                user["processed_ids"].append(element['id'])
                 
             await asyncio.sleep(config.delay_amounts["per_user"]) # wait between checks
 
 
-# Event handlers
+"""<-- EVENT HANDLERS -->"""
+
 @bot.event
 async def on_ready() -> None:
     """Prepare on Discord bot startup."""
@@ -267,11 +300,11 @@ async def on_ready() -> None:
                 await user["object"].send(config.channel_err_msg)
         except Exception as e:
             raise Exception(f"Error getting user id {user['id']} ({user['object']}) or user not found:", e)
-        try: # Set newest element per user
+        
+        try: # Set processed ids per user
             api_key = fernet.decrypt(user["api_key"].encode()).decode()
-            elements = await aiohttp_manager.read_api(config.api_url, api_key)
-            user["newest_id"] = elements[0]["id"]
-            helpers.log(f"Newest element on startup for user id {user['id']} ({user['object']}) is ID-{user['newest_id']}") # DEBUG
+            elements = await aiohttp_manager.read_api(config.notif_api_url, api_key)
+            user["processed_ids"] = deque(reversed([element['id'] for element in elements]), maxlen=config.notif_cache_length)
         except Exception as e:
             try:
                 helpers.log(f"Unable to check notifications for user id {user['id']} ({user['object']}):", e)
@@ -279,6 +312,7 @@ async def on_ready() -> None:
                 await user["object"].send(config.check_err_msg)
             except Exception as e2:
                 raise Exception(f"Error sending 'unable to check notifications' message to user id {user['id']} ({user['object']}):", e2)
+            
         await asyncio.sleep(config.delay_amounts["per_user_startup"]) # wait between checks
 
     # Set bot status
@@ -297,7 +331,7 @@ async def on_ready() -> None:
 
 @bot.event
 async def on_message(message: discord.Message) -> None:
-    """Handle commands."""
+    """Handle registration, then pass to command handlers."""
     message_content = message.content.split()
 
     # If no message_content (for example, an image or embed), isn't prefixed with !flatnotifs, or is bot user, return
@@ -327,8 +361,20 @@ async def on_message(message: discord.Message) -> None:
     else: # Process command
         await bot.process_commands(message)
 
+@bot.event
+async def on_command_error(ctx: commands.Context, error: discord.ext.commands.errors.CommandError):
+    """Handle command errors."""
+    if isinstance(error, discord.ext.commands.errors.CommandNotFound):
+        await ctx.send(
+            "Whoops! That command was invalid.\n"
+            "(Use  `!flatnotifs help`  for a list of valid commands. Make sure the command is spelled correctly!)"
+        )
+    else:
+        helpers.log(f"There was an unknown command error for user id {ctx.author.id} ({ctx.author}):", error)
 
-# Command handlers
+
+"""<-- COMMAND HANDLERS -->"""
+
 @bot.command(description="Add a rule.")
 @is_registered()
 async def addrule(ctx: commands.Context, include_exclude: str | None = None, category: str | None = None, *input_values: str) -> None:
@@ -347,12 +393,16 @@ async def addrule(ctx: commands.Context, include_exclude: str | None = None, cat
     
     global user_data_changed
     user = get_user(ctx)
+    api_key = fernet.decrypt(user["api_key"].encode()).decode()
 
-    for value in input_values:
+    for input_value in input_values:
+        if category == "actor.username": # If actor.username, convert username to id
+            input_value_id = await convert_identifier(input_value, "id", api_key)
+
         if include_exclude == "include":
-            temp = "+"+value
+            temp = "+"+input_value_id
         elif include_exclude == "exclude":
-            temp = "-"+value
+            temp = "-"+input_value_id
         else:
             await ctx.send(
                 "Please try again and provide include/exclude and a category and value in this format: "
@@ -361,8 +411,12 @@ async def addrule(ctx: commands.Context, include_exclude: str | None = None, cat
             return
         
         if category in user["important"]:
-            user["important"][category].append(temp)
-            await ctx.send(f"Rule {helpers.esc_md(category)}: {helpers.esc_md(temp)} added")
+            if category == "actor.username": # If actor.username, is a dict instead of a list
+                user["important"][category][temp] = input_value # user_id: user_name
+            else:
+                user["important"][category].append(temp)
+
+            await ctx.send(f"Rule {helpers.esc_md(category)}: {helpers.esc_md(input_value)} added")
             user_data_changed = True
         else:
             await ctx.send(f"Category {helpers.esc_md(category)} not found")
@@ -376,17 +430,26 @@ async def removerule(ctx: commands.Context, *input_values: str) -> None:
     
     global user_data_changed
     user = get_user(ctx)
+    api_key = fernet.decrypt(user["api_key"].encode()).decode()
     
     for input_value in input_values:
         found = False
         for category, values in user["important"].items():
-            for v in [input_value, ("+"+input_value), ("-"+input_value)]: # check value, +value, and -value
+            if category == "actor.username": # If actor.username, convert username to id
+                input_value_id = await convert_identifier(input_value, "id", api_key)
+
+            for v in [("+"+input_value_id), ("-"+input_value_id)]: # +value and -value
                 if v in values:
-                    values.remove(v)
+                    if category == "actor.username": # If actor.username, is a dict instead of a list
+                        values.pop(v)
+                    else:
+                        values.remove(v)
+
                     found = True
-                    await ctx.send(f"Rule {helpers.esc_md(v)} removed from {helpers.esc_md(category)}")
+                    await ctx.send(f"Rule {helpers.esc_md(input_value)} removed from {helpers.esc_md(category)}")
                     user_data_changed = True
                     break
+                
         if not found:
             await ctx.send(f"Rule {helpers.esc_md(input_value)} not found")
 
@@ -420,9 +483,8 @@ async def pause(ctx: commands.Context) -> None:
     else:
         try:
             api_key = fernet.decrypt(user["api_key"].encode()).decode()
-            elements = await aiohttp_manager.read_api(config.api_url, api_key)
-            user["newest_id"] = elements[0]["id"]
-            helpers.log(f"Newest element on unpause for user id {user['id']} ({user['object']}) is ID-{user['newest_id']}") # DEBUG
+            elements = await aiohttp_manager.read_api(config.notif_api_url, api_key)
+            user["processed_ids"] = deque(reversed([element['id'] for element in elements]), maxlen=config.notif_cache_length)
             user["paused"] = False
             user_data_changed = True
             await ctx.send("Notifications unpaused (You will now resume being notified of notifications. Pause by using  `!flatnotifs pause`)")
@@ -484,7 +546,11 @@ async def sendhere(ctx: commands.Context, mention_flag: str | None = None) -> No
                     user_data_changed = True
                 except Exception as e:
                     helpers.log(f"Error setting sendhere for user id {user['id']} ({user['object']}):", e)
-                    await ctx.send("[DEBUG]: Oops, there was an error while setting sendhere!")
+                    await ctx.send(
+                        "Uh oh, there was an error during sendhere. Please try again later "
+                        "(if it doesn't resolve on its own soon, please join the bot's "
+                        f"[Discord server](<{config.discord_url}>) and report the bug!)"
+                    )
             else:
                 await ctx.send("Cancelling sendhere (received a response other than 'Y')")
 
@@ -517,7 +583,11 @@ async def unregister(ctx: commands.Context) -> None:
                 user_data_changed = True
             except Exception as e:
                 helpers.log(f"Error unregistering for user id {user['id']} ({user['object']}):", e)
-                await ctx.send("[DEBUG]: Oops, there was an error during unregistering!")
+                await ctx.send(
+                    "Uh oh, there was an error during unregister. Please try again later "
+                    "(if it doesn't resolve on its own soon, please join the bot's "
+                    f"[Discord server](<{config.discord_url}>) and report the bug!)"
+                )
         else:
             await ctx.send("Cancelling unregister (received a response other than 'Y')")
 
@@ -552,10 +622,10 @@ async def updatetoken(ctx: commands.Context, api_key: str | None = None) -> None
     else:
         if msg.content.upper() == "Y": # Update the user's token
             try: # Read API to see if API key was valid
-                elements = await aiohttp_manager.read_api(config.api_url, api_key)
+                elements = await aiohttp_manager.read_api(config.notif_api_url, api_key)
             except Exception as e: # handle edge case http codes
                 helpers.log(f"Edge case http code handler during updatetoken of user id {ctx.author.id} ({ctx.author}):", e)
-                await ctx.channel.send(
+                await ctx.send(
                     "Uh oh, there was an error during updatetoken. Please try again later "
                     "(if it doesn't resolve on its own soon, please join the bot's "
                     f"[Discord server](<{config.discord_url}>) and report the bug!)"
@@ -564,7 +634,7 @@ async def updatetoken(ctx: commands.Context, api_key: str | None = None) -> None
             
             if elements: # If API key was valid
                 user["api_key"] = fernet.encrypt(api_key.encode()).decode()
-                user["newest_id"] = elements[0]["id"]
+                user["processed_ids"] = deque(reversed([element['id'] for element in elements]), maxlen=config.notif_cache_length)
                 await ctx.send("Successfully updated your personal token!")
                 user_data_changed = True
                 helpers.log(f"User id {user['id']} ({user['object']}) updated token, newest element on startup is ID-{elements[0]['id']}") # DEBUG
@@ -579,10 +649,25 @@ async def updatetoken(ctx: commands.Context, api_key: str | None = None) -> None
 @bot.command(description="Show all rules that you have set.")
 @is_registered()
 async def rules(ctx: commands.Context) -> None:
+    global user_data_changed
     user = get_user(ctx)
+    api_key = fernet.decrypt(user["api_key"].encode()).decode()
+
+    for user_id, user_name in user["important"]["actor.username"].items(): # Populate usernames if any missing
+        flag = False
+        if not user_name:
+            user["important"]["actor.username"][user_id] = await convert_identifier(user_id[1:], "username", api_key) # Remove the + or - before conversion
+            flag = True
+        if flag:
+            user_data_changed = True
+    important = { # Only get the usernames
+        key: [user_name for user_name in values.values()] if key == "actor.username" else values
+        for key, values in user["important"].items() 
+    }
+    
     # chr(10) is used in place \n to ensure compatibility with older versions of Python that don't allow escape chars in an f-string
     await ctx.author.send(
-        f"Rules: {helpers.esc_md(json.dumps(user['important'], indent=4))}"
+        f"Rules: {helpers.esc_md(json.dumps(important, indent=4))}"
         f"{chr(10)+'Override is currently enabled (disable by using !flatnotifs override)' if user['override'] else ''}"
         f"{chr(10)+'Notifications are currently paused (unpause by using !flatnotifs pause)' if user['paused'] else ''}"
     )
@@ -596,8 +681,8 @@ async def version(ctx: commands.Context) -> None:
 @is_registered()
 async def help(ctx: commands.Context) -> None:
     # split into two messages because of Discord message max length
-    await ctx.channel.send(config.help_msg[0])
-    await ctx.channel.send(config.help_msg[1])
+    await ctx.send(config.help_msg[0])
+    await ctx.send(config.help_msg[1])
 
 @bot.command(description="Sync the command tree.")
 @commands.is_owner()
@@ -609,14 +694,8 @@ async def sync(ctx: commands.Context) -> None:
 async def hello(ctx: commands.Context) -> None:
     await ctx.send("Hello world!")
 
-@bot.event
-async def on_command_error(ctx: commands.Context, error: discord.ext.commands.errors.CommandError):
-    if isinstance(error, discord.ext.commands.errors.CommandNotFound):
-        await ctx.send(
-            "Whoops! That command was invalid.\n"
-            "(Use  `!flatnotifs help`  for a list of valid commands. Make sure the command is spelled correctly!)"
-        )
 
+"""<-- MAIN -->"""
 
 if __name__ == "__main__":
     # Start keepalive and run Discord bot
