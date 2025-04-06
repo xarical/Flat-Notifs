@@ -7,14 +7,6 @@ datafile_name = "data.json"
 NOTE: As of 4/4/25, rate limits are as follows:
 With API key: 7200 / hour / user
 Without API key: 1800 / hour / all anonymous users
-
-A given user will read the notif API up to once every 15 seconds, or up
-to 4 times a minute, i.e. 240 calls an hour.
-Assume a given user has 50 actor.username rules configured; assume they
-will view their rules for the first time, add 50 actor.username rules,
-and then remove 50 actor.username rules, once an hour, for a total of
-150 calls an hour.
-This results in a grand total of 390 calls an hour, well under the rate limit.
 """
 # FIXME: As you scale, cap load at 20, 15 sec per user, and 0.5 sec per convert might be too slow
 max_api_load = 20

@@ -1,4 +1,5 @@
 import asyncio
+import time
 from typing import Optional
 
 import aiohttp
@@ -48,18 +49,20 @@ class AiohttpManager:
             headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
             async with self._semaphore:
                 async with self._session.get(url, headers=headers) as response:
-                    if response.status == 401: # invalid API key
+                    if response.status in {401, 404}: # invalid API key or user not found
                         try:
                             response.raise_for_status() # force an exception to get e
                         except aiohttp.ClientResponseError as e:
-                            helpers.log("401 - Unauthorized:", e)
-                        return [] # empty dict will inform the user that their notifications could not be read
-                    
+                            helpers.log(e)
+                        return [] # empty dict = fail
+
                     response.raise_for_status()
-                    resp_headers = response.headers
-                    import time
-                    helpers.log(f"Rate limit remaining for key {api_key[-4:]}: {resp_headers.get('X-RateLimit-Remaining')}/{resp_headers.get('X-RateLimit-Limit')}, resets in {((int(resp_headers.get('X-RateLimit-Reset')) - time.time())/60):.2f} minutes") # DEBUG
+                    # resp_headers = response.headers
+                    # helpers.log(f"Rate limit remaining for key {api_key[-4:]}: {resp_headers.get('X-RateLimit-Remaining')}/{resp_headers.get('X-RateLimit-Limit')}, resets in {((int(resp_headers.get('X-RateLimit-Reset')) - time.time())/60):.2f} minutes") # DEBUG
                     return await response.json()
 
         except aiohttp.ClientError as e: # ignore edge case http codes
-            raise Exception("API request error (do not act):", e)
+            raise APIRequestError("API request error (do not act):", e)
+        
+class APIRequestError(Exception):
+    pass

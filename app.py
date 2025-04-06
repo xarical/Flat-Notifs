@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet
 import discord
 from discord.ext import commands, tasks
 
-from utils.AiohttpManager import AiohttpManager
+from utils.AiohttpManager import AiohttpManager, APIRequestError
 import utils.config as config
 import utils.datasets as datasets
 import utils.helpers as helpers
@@ -64,14 +64,17 @@ async def convert_identifier(identifier: str, convert_to: str, api_key: str) -> 
     try:
         data = await aiohttp_manager.read_api(config.user_api_url.format(identifier=identifier), api_key)
         await asyncio.sleep(config.delay_amounts["per_convert"])
+        if not data:
+            helpers.log(f"User not found with identifier: {identifier}")
+            raise ValueError(f"User not found with identifier: {identifier}")
         helpers.log(f"{identifier} converted to {convert_to}: {data[convert_to]}") # DEBUG
         return data[convert_to]
     except KeyError as e:
         helpers.log(f"Error during identifier convert getting {convert_to} from {data}:", e)
-        return identifier
-    except Exception as e:
+        raise
+    except APIRequestError as e: # handle edge case http codes
         helpers.log("Edge case http code handler during identifier convert:", e)
-        return identifier
+        raise
 
 def get_user(ctx: commands.Context | discord.Message) -> dict | None:
     """Get the user from user_data."""
@@ -88,12 +91,12 @@ def is_registered() -> Callable[[commands.Context], bool]:
         return bool(user)
     return commands.check(func)
 
-async def register_user(api_key, message) -> None:
+async def register_user(api_key: str, message: discord.Message) -> None:
     """Register the user."""
     global user_data_changed
     try: # Read API to see if API key was valid
         elements = await aiohttp_manager.read_api(config.notif_api_url, api_key)
-    except Exception as e: # handle edge case http codes
+    except APIRequestError as e: # handle edge case http codes
         helpers.log(f"Edge case http code handler during registration of user id {message.author.id} ({message.author}):", e)
         await message.channel.send(
             "Uh oh, there was an error during registration. Please try again later "
@@ -107,7 +110,7 @@ async def register_user(api_key, message) -> None:
             "id": message.author.id,
             "api_key": fernet.encrypt(api_key.encode()).decode(),
             "important": {
-                "actor.username": [],
+                "actor.username": {},
                 "type": [],
                 "attachments.score.id": []
             },
@@ -156,7 +159,7 @@ async def check_notifs_loop() -> None:
             excluded = False
             try:
                 elements = await aiohttp_manager.read_api(config.notif_api_url, api_key)
-            except Exception as e: # handle edge case http codes
+            except APIRequestError as e: # handle edge case http codes
                 helpers.log("Edge case http code handler:", e)
                 continue
 
@@ -198,11 +201,7 @@ async def check_notifs_loop() -> None:
                     if ("-"+value) in values:
                         excluded = True
                         if category == "actor.username": # If actor.username
-                            if not values["-"+value]: # Populate username if missing
-                                helpers.log("Populated", values["-"+value]) # DEBUG
-                                values["-"+value] = await convert_identifier(value, "username", api_key)
-                                user_data_changed = True
-                            elif values["-"+value] != element['actor']['username']: # Update username if changed
+                            if values["-"+value] != element['actor']['username']: # Update username if changed
                                 helpers.log("Updated", values["-"+value], "to", element['actor']['username']) # DEBUG
                                 values["-"+value] = element['actor']['username']
                                 user_data_changed = True
@@ -218,11 +217,7 @@ async def check_notifs_loop() -> None:
                         if not excluded:
                             is_important = True
                         if category == "actor.username": # If actor.username
-                            if not values["+"+value]: # Populate username if missing
-                                helpers.log("Populated", values["+"+value]) # DEBUG
-                                values["+"+value] = await convert_identifier(value, "username", api_key)
-                                user_data_changed = True
-                            elif values["+"+value] != element['actor']['username']: # Update username if changed
+                            if values["+"+value] != element['actor']['username']: # Update username if changed
                                 helpers.log("Updated", values["+"+value], "to", element['actor']['username']) # DEBUG
                                 values["+"+value] = element['actor']['username']
                                 user_data_changed = True
@@ -397,7 +392,23 @@ async def addrule(ctx: commands.Context, include_exclude: str | None = None, cat
 
     for input_value in input_values:
         if category == "actor.username": # If actor.username, convert username to id
-            input_value_id = await convert_identifier(input_value, "id", api_key)
+            try:
+                input_value_id = await convert_identifier(input_value, "id", api_key)
+            except ValueError as e:
+                await ctx.send(
+                    f"User not found with username {helpers.esc_md(input_value)}. "
+                    "Please try again and provide a valid username."
+                )
+                return
+            except Exception as e:
+                await ctx.send(
+                    "Uh oh, there was an error during addrule. Please try again later "
+                    "(if it doesn't resolve on its own soon, please join the bot's "
+                    f"[Discord server](<{config.discord_url}>) and report the bug!)"
+                )
+                return
+        else:
+            input_value_id = input_value
 
         if include_exclude == "include":
             temp = "+"+input_value_id
@@ -436,7 +447,22 @@ async def removerule(ctx: commands.Context, *input_values: str) -> None:
         found = False
         for category, values in user["important"].items():
             if category == "actor.username": # If actor.username, convert username to id
-                input_value_id = await convert_identifier(input_value, "id", api_key)
+                try: # Invert the keys and values, then search
+                    input_value_id = dict(zip(values.values(), values.keys()))[input_value][1:] # Remove the + or - before conversion
+                except KeyError as e: # If it doesn't exist, convert
+                    try:
+                        input_value_id = await convert_identifier(input_value, "id", api_key)
+                    except ValueError as e:
+                        input_value_id = input_value
+                    except Exception as e:
+                        await ctx.send(
+                            "Uh oh, there was an error during removerule. Please try again later "
+                            "(if it doesn't resolve on its own soon, please join the bot's "
+                            f"[Discord server](<{config.discord_url}>) and report the bug!)"
+                        )
+                        return
+            else:
+                input_value_id = input_value
 
             for v in [("+"+input_value_id), ("-"+input_value_id)]: # +value and -value
                 if v in values:
@@ -623,7 +649,7 @@ async def updatetoken(ctx: commands.Context, api_key: str | None = None) -> None
         if msg.content.upper() == "Y": # Update the user's token
             try: # Read API to see if API key was valid
                 elements = await aiohttp_manager.read_api(config.notif_api_url, api_key)
-            except Exception as e: # handle edge case http codes
+            except APIRequestError as e: # handle edge case http codes
                 helpers.log(f"Edge case http code handler during updatetoken of user id {ctx.author.id} ({ctx.author}):", e)
                 await ctx.send(
                     "Uh oh, there was an error during updatetoken. Please try again later "
@@ -651,20 +677,10 @@ async def updatetoken(ctx: commands.Context, api_key: str | None = None) -> None
 async def rules(ctx: commands.Context) -> None:
     global user_data_changed
     user = get_user(ctx)
-    api_key = fernet.decrypt(user["api_key"].encode()).decode()
-
-    for user_id, user_name in user["important"]["actor.username"].items(): # Populate usernames if any missing
-        flag = False
-        if not user_name:
-            user["important"]["actor.username"][user_id] = await convert_identifier(user_id[1:], "username", api_key) # Remove the + or - before conversion
-            flag = True
-        if flag:
-            user_data_changed = True
     important = { # Only get the usernames
-        key: [user_name for user_name in values.values()] if key == "actor.username" else values
+        key: [user_id[0]+user_name for user_id, user_name in values.items()] if key == "actor.username" else values # Add the + or - back to the username
         for key, values in user["important"].items() 
-    }
-    
+    } 
     # chr(10) is used in place \n to ensure compatibility with older versions of Python that don't allow escape chars in an f-string
     await ctx.author.send(
         f"Rules: {helpers.esc_md(json.dumps(important, indent=4))}"
