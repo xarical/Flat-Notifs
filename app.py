@@ -17,6 +17,18 @@ import utils.keepalive as keepalive
 
 """<-- VARIABLES -->"""
 
+# Environment variables
+bot_token = os.environ["DISCORD_BOT_TOKEN"] # Discord bot token
+dataset_id = os.environ["DATASET_ID"] # ID of the HF dataset
+hf_api_key = os.environ["HF_API_KEY"] # HF API key to access the dataset
+fernet = Fernet(os.environ["FERNET_KEY"].encode()) # Fernet key
+nameservers = os.getenv("NAMESERVERS") # Nameservers to use for gateway connection, if applicable
+
+# Other variables
+aiohttp_manager = AiohttpManager()
+user_data_changed = False # Global
+user_data = datasets.load_dataset(dataset_id, config.datafile_name, hf_api_key) # Global
+
 # Instantiate Discord bot
 intents = discord.Intents.default()
 intents.message_content = True
@@ -27,17 +39,6 @@ bot = commands.Bot(
     help_command=None,
     intents=intents,
 )
-
-# Environment variables
-bot_token = os.environ["DISCORD_BOT_TOKEN"] # Discord bot token
-dataset_id = os.environ["DATASET_ID"] # ID of the HF dataset
-hf_api_key = os.environ["HF_API_KEY"] # HF API key to access the dataset
-fernet = Fernet(os.environ["FERNET_KEY"].encode()) # Fernet key
-
-# Other variables
-aiohttp_manager = AiohttpManager()
-user_data_changed = False # Global
-user_data = datasets.load_dataset(dataset_id, config.datafile_name, hf_api_key) # Global
 
 
 """<-- MISC FUNCTIONS -->"""

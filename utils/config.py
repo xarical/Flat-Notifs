@@ -3,11 +3,6 @@ port = 7860
 
 datafile_name = "data.json"
 
-"""
-NOTE: As of 4/4/25, rate limits are as follows:
-With API key: 7200 / hour / user
-Without API key: 1800 / hour / all anonymous users
-"""
 # FIXME: As you scale, cap load at 20, 15 sec per user, and 0.5 sec per convert might be too slow
 max_api_load = 20
 delay_amounts = {
@@ -16,6 +11,11 @@ delay_amounts = {
     "per_user_startup": 15, # seconds
     "per_convert": 0.5, # seconds
 }
+"""
+NOTE: As of 4/4/25, rate limits are as follows:
+With API key: 7200 / hour / user
+Without API key: 1800 / hour / all anonymous users
+"""
 
 # FIXME: What if more than 15 notifications were sent within the loop interval?
 notif_cache_length = 15
