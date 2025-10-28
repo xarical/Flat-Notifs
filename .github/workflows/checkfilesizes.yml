@@ -1,5 +1,5 @@
 name: Check file sizes
-on:               # or directly `on: [push]` to run the action on every push on any branch
+on: # or directly `on: [push]` to run the action on every push on any branch
   pull_request:
     branches: [main]
 
@@ -9,6 +9,9 @@ on:               # or directly `on: [push]` to run the action on every push on 
 jobs:
   check-file-size:
     runs-on: ubuntu-latest
+    permissions:
+      # required for ppremk/lfs-warning
+      pull-requests: write
     steps:
       - name: Check file sizes
         uses: ActionsDesk/lfs-warning@v2.0
