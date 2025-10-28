@@ -116,8 +116,8 @@ async def register_user(api_key: str, message: discord.Message) -> None:
         }
         user_data.append(user)
         await message.channel.send(
-            "Successfully registered! (If you didn't mean to do this, use the command  `!flatnotifs unregister`. "
-            "To learn how to start setting rules, use the command  `!flatnotifs help` )"
+            "Successfully registered! (If you didn't mean to do this, use the command  `%flatnotifs unregister`. "
+            "To learn how to start setting rules, use the command  `%flatnotifs help` )"
         )
         user_data_changed = True
     else:
@@ -137,7 +137,7 @@ async def main():
     resolver = AsyncResolver(nameservers=nameservers.split(",") if nameservers else nameservers)
     connector = aiohttp.TCPConnector(resolver=resolver)
     bot = commands.Bot(
-        command_prefix="!flatnotifs ",
+        command_prefix="%flatnotifs ",
         case_insensitive=True,
         strip_after_prefix=True,
         help_command=None,
@@ -340,8 +340,8 @@ async def main():
         """Handle registration, then pass to command handlers."""
         message_content = message.content.split()
 
-        # If no message_content (for example, an image or embed), isn't prefixed with !flatnotifs, or is bot user, return
-        if not message_content or message_content[0] != "!flatnotifs" or message.author.id == bot.user.id:
+        # If no message_content (for example, an image or embed), isn't prefixed with %flatnotifs, or is bot user, return
+        if not message_content or message_content[0] != "%flatnotifs" or message.author.id == bot.user.id:
             return
 
         # Get user; if not registered, prompt the user to register
@@ -352,17 +352,17 @@ async def main():
                 await message.channel.send(config.welcome_msg)
                 return
             if not isinstance(message.channel, discord.DMChannel): # Make sure is in DMs
-                await message.channel.send("`!flatnotifs getstarted`  must be used in DMs!")
+                await message.channel.send("`%flatnotifs getstarted`  must be used in DMs!")
                 return
             api_key = message_content[2] # Register with provided API key
             await register_user(api_key, message)
             return
 
-        # Make sure there is a command after !flatnotifs (i.e. message_content[1] must exist)
+        # Make sure there is a command after %flatnotifs (i.e. message_content[1] must exist)
         if len(message_content) < 2:
             await message.channel.send(
                 "Hello to you too! <3\n"
-                "(!flatnotifs is not a valid command by itself; use  `!flatnotifs help`  for a list of valid commands.)"
+                "(%flatnotifs is not a valid command by itself; use  `%flatnotifs help`  for a list of valid commands.)"
             )
         else: # Process command
             await bot.process_commands(message)
@@ -373,7 +373,7 @@ async def main():
         if isinstance(error, discord.ext.commands.errors.CommandNotFound):
             await ctx.send(
                 "Whoops! That command was invalid.\n"
-                "(Use  `!flatnotifs help`  for a list of valid commands. Make sure the command is spelled correctly!)"
+                "(Use  `%flatnotifs help`  for a list of valid commands. Make sure the command is spelled correctly!)"
             )
         else:
             helpers.log(f"There was an unknown command error for user id {ctx.author.id} ({ctx.author}):", error)
@@ -387,13 +387,13 @@ async def main():
         if not include_exclude:
             await ctx.send(
                 "Please try again and provide include/exclude and a category and value in this format: "
-                "`!flatnotifs addrule include/exclude category value`  (include/exclude was missing)"
+                "`%flatnotifs addrule include/exclude category value`  (include/exclude was missing)"
             )
             return
         if not category or not input_values:
             await ctx.send(
                 "Please try again and provide include/exclude and a category and value in this format: "
-                "`!flatnotifs addrule include/exclude category value`  (category or value was missing)"
+                "`%flatnotifs addrule include/exclude category value`  (category or value was missing)"
             )
             return
         
@@ -428,7 +428,7 @@ async def main():
             else:
                 await ctx.send(
                     "Please try again and provide include/exclude and a category and value in this format: "
-                    "`!flatnotifs addrule include/exclude category value`  (first argument was not include or exclude)"
+                    "`%flatnotifs addrule include/exclude category value`  (first argument was not include or exclude)"
                 )
                 return
             
@@ -447,7 +447,7 @@ async def main():
     @is_registered()
     async def removerule(ctx: commands.Context, *input_values: str) -> None:
         if not input_values:
-            await ctx.send("Please try again and provide a value in this format:  `!flatnotifs removerule value`")
+            await ctx.send("Please try again and provide a value in this format:  `%flatnotifs removerule value`")
             return
         
         global user_data_changed
@@ -498,12 +498,12 @@ async def main():
         if user["override"]:
             await ctx.send(
                 "Override disabled (You will now only be notified of notifications that "
-                "match your specified filters. Re-enable by using  `!flatnotifs override`)"
+                "match your specified filters. Re-enable by using  `%flatnotifs override`)"
             )
         else:
             await ctx.send(
                 "Override enabled (You will now be notified of all notifications. "
-                "Disable by using  `!flatnotifs override`)"
+                "Disable by using  `%flatnotifs override`)"
             )
         user["override"] = not user["override"]
         user_data_changed = True
@@ -514,7 +514,7 @@ async def main():
         global user_data_changed
         user = get_user(ctx)
         if not user["paused"]:
-            await ctx.send("Notifications paused (You will not be notified of any notifications. Unpause by using  `!flatnotifs pause`)")
+            await ctx.send("Notifications paused (You will not be notified of any notifications. Unpause by using  `%flatnotifs pause`)")
             user["paused"] = True
             user_data_changed = True
         else:
@@ -524,7 +524,7 @@ async def main():
                 user["processed_ids"] = deque(reversed([element['id'] for element in elements]), maxlen=config.notif_cache_length)
                 user["paused"] = False
                 user_data_changed = True
-                await ctx.send("Notifications unpaused (You will now resume being notified of notifications. Pause by using  `!flatnotifs pause`)")
+                await ctx.send("Notifications unpaused (You will now resume being notified of notifications. Pause by using  `%flatnotifs pause`)")
             except Exception as e:
                 try:
                     helpers.log(f"Unable to check notifications for user id {user['id']} ({user['object']}):", e)
@@ -552,7 +552,7 @@ async def main():
                 await ctx.send("sendhere can only be set in non-DM channels.")
                 return
             if not mention_flag or (mention_flag.lower() not in {"mention", "nomention"}): # Validate mention_flag
-                await ctx.send("Please try again and provide mention or nomention in this format:  `!flatnotifs sendhere mention/nomention`")
+                await ctx.send("Please try again and provide mention or nomention in this format:  `%flatnotifs sendhere mention/nomention`")
                 return
             await ctx.send( # Ask for confirmation
                 "Are you sure you want to switch your notification send channel to here? (Y/N)\n"
@@ -577,7 +577,7 @@ async def main():
                         user["sendhere"]["mention"] = (mention_flag.lower() == "mention") # Given it was validated, if not mention then nomention
                         await user["channel"].send(
                             "Successfully changed your notification channel to this channel. "
-                            "You can disable this at any time using !flatnotifs sendhere"
+                            "You can disable this at any time using %flatnotifs sendhere"
                         )
                         user["sendhere"]["bool"] = True # Don't change bool unless everything went smoothly
                         user_data_changed = True
@@ -616,7 +616,7 @@ async def main():
             if msg.content.upper() == "Y": # Unregister the user
                 try:
                     user_data.remove(user)
-                    await ctx.send("Successfully unregistered. You can re-register by using the command !flatnotifs getstarted")
+                    await ctx.send("Successfully unregistered. You can re-register by using the command %flatnotifs getstarted")
                     user_data_changed = True
                 except Exception as e:
                     helpers.log(f"Error unregistering for user id {user['id']} ({user['object']}):", e)
@@ -632,7 +632,7 @@ async def main():
     @is_registered()
     async def updatetoken(ctx: commands.Context, api_key: str | None = None) -> None:
         if not isinstance(ctx.channel, discord.DMChannel): # Make sure is in DMs
-            await ctx.send("`!flatnotifs updatetoken` must be used in DMs!")
+            await ctx.send("`%flatnotifs updatetoken` must be used in DMs!")
             return
         if api_key is None:
             await ctx.send("Please provide your new personal token.")
@@ -695,8 +695,8 @@ async def main():
         # chr(10) is used in place \n to ensure compatibility with older versions of Python that don't allow escape chars in an f-string
         await ctx.author.send(
             f"Rules: {helpers.esc_md(json.dumps(important, indent=4))}"
-            f"{chr(10)+'Override is currently enabled (disable by using !flatnotifs override)' if user['override'] else ''}"
-            f"{chr(10)+'Notifications are currently paused (unpause by using !flatnotifs pause)' if user['paused'] else ''}"
+            f"{chr(10)+'Override is currently enabled (disable by using %flatnotifs override)' if user['override'] else ''}"
+            f"{chr(10)+'Notifications are currently paused (unpause by using %flatnotifs pause)' if user['paused'] else ''}"
         )
 
     @bot.command(description="Show the version of the bot.")

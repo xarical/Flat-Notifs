@@ -35,16 +35,16 @@ v2025.3.13 - Handle API and server errors more gracefully, improve maintainabili
 
 check_err_msg = """
 [DEBUG]: Unable to check your notifications! Did you delete your personal token? (If not, this is probably just a result of a server error)
-(Automatically pausing to avoid spamming; you can use  `!flatnotifs pause`  to unpause)
+(Automatically pausing to avoid spamming; you can use  `%flatnotifs pause`  to unpause)
 """
 
 channel_err_msg = """
 [DEBUG]: Unable to find your specified channel! Was the channel deleted, or did the bot lose access to it?
-(Defaulting to DMs to avoid spamming; you can use  `!flatnotifs sendhere`  again to pick a channel to send notifications)
+(Defaulting to DMs to avoid spamming; you can use  `%flatnotifs sendhere`  again to pick a channel to send notifications)
 """
 
 welcome_msg = f"""
-Welcome to Flat.io Notifs! Please provide a personal token in this format:  `!flatnotifs getstarted token`  (where token is your personal token).
+Welcome to Flat.io Notifs! Please provide a personal token in this format:  `%flatnotifs getstarted token`  (where token is your personal token).
 To get a personal token: 1. Go to the [Flat.io Developers portal](https://flat.io/developers/apps), 2. Create a new app if you don't have one already, 3. Go to Personal Tokens, 4. Create a new token and add the notifications.readonly scope, 5. Copy the token that appears.
 Note that getstarted can only be used in DMs. Remember to never send your personal token in a public channel! It can give other people access to your account's information. If you exposed your personal token, go delete it in the [Flat.io Developers portal](https://flat.io/developers/apps) and create a new one.
 *(Need help? Join the bot's [Discord server](<{discord_url}>)!)*
@@ -56,16 +56,16 @@ help_msg = [ f"""
 Welcome to Flat Notifs! This a bot that sends your Flat notifications directly to your Discord DMs or a channel in a server that you specify (that this bot has been added to)! In addition, it allows you to filter by user, notification type, and score id.
 
 **Available commands:**
-`!flatnotifs addrule include/exclude category value`  (Add a rule. More than one value can be specified, seperated by spaces)
-`!flatnotifs removerule value`  (Remove a rule. More than one value can be specified, seperated by spaces)
-`!flatnotifs override`  (Override the rules you have set. The bot will notify you of all notifications. Use the same command to toggle on and off)
-`!flatnotifs pause`  (Pause notifications. The bot will not notify you of any notifications. Use the same command to toggle on and off)
-`!flatnotifs sendhere mention/nomention`  (Set your notifications to send in the channel where the command was sent. Use the same command to toggle on and off. When toggling on, specify whether you want to be @ mentioned)
-`!flatnotifs unregister`  (Unregister and delete all of your information including your personal token, rules, and other preferences)
-`!flatnotifs updatetoken token`  (Update your personal token)
-`!flatnotifs rules`  (Show all rules you have set)
-`!flatnotifs version`  (Show patch notes for the current and previous version)
-`!flatnotifs help`  (You are here!)
+`%flatnotifs addrule include/exclude category value`  (Add a rule. More than one value can be specified, seperated by spaces)
+`%flatnotifs removerule value`  (Remove a rule. More than one value can be specified, seperated by spaces)
+`%flatnotifs override`  (Override the rules you have set. The bot will notify you of all notifications. Use the same command to toggle on and off)
+`%flatnotifs pause`  (Pause notifications. The bot will not notify you of any notifications. Use the same command to toggle on and off)
+`%flatnotifs sendhere mention/nomention`  (Set your notifications to send in the channel where the command was sent. Use the same command to toggle on and off. When toggling on, specify whether you want to be @ mentioned)
+`%flatnotifs unregister`  (Unregister and delete all of your information including your personal token, rules, and other preferences)
+`%flatnotifs updatetoken token`  (Update your personal token)
+`%flatnotifs rules`  (Show all rules you have set)
+`%flatnotifs version`  (Show patch notes for the current and previous version)
+`%flatnotifs help`  (You are here!)
 
 **Available categories/values (for addrule and removerule):**        
 """,
