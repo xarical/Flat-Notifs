@@ -322,10 +322,11 @@ async def main():
             await asyncio.sleep(config.delay_amounts["per_user_startup"]) # wait between checks
 
         # Set bot status
-        helpers.log(f"{len(user_data)} user(s) on startup")
+        num_users = len(user_data)
+        helpers.log(f"{num_users} user(s) on startup")
         await bot.change_presence(
-        status=discord.Status.online, 
-        activity=discord.Game(name="with the Flat.io API")
+            status=discord.Status.online,
+            activity=discord.Game(name=f"%flatnotifs help | Watching {num_users} users' notifs")
         )
 
         # Start the check_notifs_loop

@@ -3,12 +3,12 @@ port = 7860
 
 datafile_name = "data.json"
 
-# FIXME: As you scale, cap load at 20, 15 sec per user, and 0.5 sec per convert might be too slow
+# FIXME: As you scale, cap load at 20 and 15 sec per user might be too slow
 max_api_load = 20
 delay_amounts = {
     "per_loop_default": 60, # seconds
     "per_user": 15, # seconds
-    "per_user_startup": 15, # seconds
+    "per_user_startup": 10, # seconds
     "per_convert": 0.5, # seconds
 }
 """
@@ -25,10 +25,10 @@ discord_url = "https://discord.gg/s5xXz8Nfun"
 
 version_msg = f"""
 **Current version:**
-v2025.4.4 - Mention flag added to sendhere, refactor to use user IDs (for checking) in combination with usernames (for input/output), bug fixes
+v2025.12.6 - Change command prefix to % from ! to avoid conflict with FlatBot, bug fixes, (INTERNAL) adjust deployment configuration, (DEV) begin implementation of more user-friendly OAuth2 authorization
 
 **Previous version:**
-v2025.3.13 - Handle API and server errors more gracefully, improve maintainability of codebase
+v2025.4.4 - Mention flag added to sendhere, refactor to use user IDs (for checking) in combination with usernames (for input/output), bug fixes, improve maintainability of codebase
 
 *(Go to the bot's [Discord server](<{discord_url}>) for more details and older patch notes!)*
 """
