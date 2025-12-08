@@ -148,22 +148,20 @@ async def main():
 
     """<-- LOOPS -->"""
 
-    @tasks.loop(hours=24)
-    async def aiohttp_refresh_loop() -> None:
-        """Refresh the aiohttp session every 24 hours."""
-        await aiohttp_manager.refresh_session()
-
     @tasks.loop(seconds=60)
     async def check_notifs_loop() -> None:
         """Check notifications every change_interval_calc seconds."""    
         check_notifs_loop.change_interval(seconds=change_interval_calc())
         global user_data_changed
         if user_data_changed: # Update dataset
-            filtered_user_data = filter_user_data(exclude={"object", "processed_ids", "channel"})
-            datasets.update_dataset(filtered_user_data, dataset_id, config.datafile_name, hf_api_key)
-            user_data_changed = False
+            try:
+                filtered_user_data = filter_user_data(exclude={"object", "processed_ids", "channel"})
+                datasets.update_dataset(filtered_user_data, dataset_id, config.datafile_name, hf_api_key)
+                user_data_changed = False
+            except Exception as e:
+                helpers.log("Error, failed to update dataset (will retry next loop):", e)
 
-        for user in user_data:
+        for user in list(user_data):
             if not user["paused"]:
                 # Get the newest element and element list
                 api_key = fernet.decrypt(user["api_key"].encode()).decode()
@@ -286,12 +284,12 @@ async def main():
         """Prepare on Discord bot startup."""
         helpers.log("Bot has connected to Discord! :3")
 
-        # Start the aiohttp_refresh task
-        helpers.log("Starting aiohttp_refresh_loop...")
+        # Start the aiohttp session
+        helpers.log("Starting aiohttp session...")
         try:
-            aiohttp_refresh_loop.start()
-        except RuntimeError as e:
-            helpers.log("Error starting aiohttp_refresh_loop:", e)
+            await aiohttp_manager.refresh_session()
+        except Exception as e:
+            helpers.log("Error starting aiohttp session:", e)
         
         helpers.log("Processing users...")
         for user in user_data:
@@ -357,6 +355,9 @@ async def main():
                 return
             api_key = message_content[2] # Register with provided API key
             await register_user(api_key, message)
+            await bot.change_presence(
+                activity=discord.Game(name=f"%flatnotifs help | Watching {len(user_data)} users' notifs")
+            )
             return
 
         # Make sure there is a command after %flatnotifs (i.e. message_content[1] must exist)
@@ -619,6 +620,9 @@ async def main():
                     user_data.remove(user)
                     await ctx.send("Successfully unregistered. You can re-register by using the command %flatnotifs getstarted")
                     user_data_changed = True
+                    await bot.change_presence(
+                        activity=discord.Game(name=f"%flatnotifs help | Watching {len(user_data)} users' notifs")
+                    )
                 except Exception as e:
                     helpers.log(f"Error unregistering for user id {user['id']} ({user['object']}):", e)
                     await ctx.send(
@@ -711,6 +715,12 @@ async def main():
         # split into two messages because of Discord message max length
         await ctx.send(config.help_msg[0])
         await ctx.send(config.help_msg[1])
+
+    @bot.command(description="Refressh aiohttp session.")
+    @commands.is_owner()
+    async def aiohttp_refresh(ctx: commands.Context) -> None:
+        await aiohttp_manager.refresh_session()
+        await ctx.send("Refreshed aiohttp session.")
 
     @bot.command(description="Sync the command tree.")
     @commands.is_owner()
