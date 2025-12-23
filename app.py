@@ -1,6 +1,7 @@
 import asyncio
 from collections import deque
 import json
+import logging
 import os
 from typing import Callable
 
@@ -30,6 +31,13 @@ nameservers = os.getenv("NAMESERVERS") # Comma separated nameservers to use for 
 aiohttp_manager = AiohttpManager()
 user_data_changed = False # Global
 user_data = datasets.load_dataset(dataset_id, config.datafile_name, hf_api_key) # Global
+
+# Set logging level
+helpers.log("LOGGING_LEVEL:", l := os.environ["LOGGING_LEVEL"])
+if l == "INFO":
+    logging.basicConfig(level=logging.INFO)
+elif l == "DEBUG":
+    logging.basicConfig(level=logging.DEBUG)
 
 
 """<-- MISC FUNCTIONS -->"""
