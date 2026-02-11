@@ -251,33 +251,37 @@ async def main():
 
                     # Output once all rules have been iterated through
                     if is_important or user["override"]:
-                        # Set url if applicable
-                        if element['type'] == "scoreComment":
-                            url = element['attachments']['score']['htmlUrl'] + "#c-" + element['attachments']['scoreComment'] + "\n"
-                        elif element['type'] in {"scorePublication", "scoreStar", "scoreInvitation"}:
-                            url = element['attachments']['score']['htmlUrl'] + "\n"               
-                        elif element['type'] == "userFollow":
-                            url = element['actor']['htmlUrl'] + "\n"
-                        else:
-                            url = ""
-                    
-                        # Compose message
-                        m = (
-                            f"{helpers.esc_md(element['actor']['printableName'])}: {helpers.esc_md(element['type'])} [(Open on Flat)]({url})\n"
-                            f"-# Rule(s): {helpers.esc_md(str(triggered_rules))}"
-                        )
+                        # Suppress KeyError
+                        try:
+                            # Set url if applicable
+                            if element['type'] == "scoreComment":
+                                url = element['attachments']['score']['htmlUrl'] + "#c-" + element['attachments']['scoreComment'] + "\n"
+                            elif element['type'] in {"scorePublication", "scoreStar", "scoreInvitation"}:
+                                url = element['attachments']['score']['htmlUrl'] + "\n"               
+                            elif element['type'] == "userFollow":
+                                url = element['actor']['htmlUrl'] + "\n"
+                            else:
+                                url = ""
+                        
+                            # Compose message
+                            m = (
+                                f"{helpers.esc_md(element['actor']['printableName'])}: {helpers.esc_md(element['type'])} [(Open on Flat)]({url})\n"
+                                f"-# Rule(s): {helpers.esc_md(str(triggered_rules))}"
+                            )
 
-                        # Send to user's specified channel if configured else send to user
-                        if user["sendhere"]["bool"]:
-                            try:
-                                await user["channel"].send(f"{user['object'].mention + ' ' if user['sendhere']['mention'] else ''}{m}")
-                            except Exception as e:
-                                helpers.log(f"Unable to find specified channel for user id {user['id']} ({user['object']}):", e)
-                                user["sendhere"]["bool"] = False
-                                await user["object"].send(config.channel_err_msg)
+                            # Send to user's specified channel if configured else send to user
+                            if user["sendhere"]["bool"]:
+                                try:
+                                    await user["channel"].send(f"{user['object'].mention + ' ' if user['sendhere']['mention'] else ''}{m}")
+                                except Exception as e:
+                                    helpers.log(f"Unable to find specified channel for user id {user['id']} ({user['object']}):", e)
+                                    user["sendhere"]["bool"] = False
+                                    await user["object"].send(config.channel_err_msg)
+                                    await user["object"].send(m)
+                            else:
                                 await user["object"].send(m)
-                        else:
-                            await user["object"].send(m)
+                        except KeyError as e:
+                            helpers.log(f"Suppressed KeyError during notif url building or notif sending, some expected value was undefined for", element)
 
                     # Add id to the list of processed ids
                     user["processed_ids"].append(element['id'])
