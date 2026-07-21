@@ -17,6 +17,8 @@ import utils.datasets as datasets
 import utils.helpers as helpers
 import utils.keepalive as keepalive
 
+from dotenv import load_dotenv
+load_dotenv()
 
 """<-- VARIABLES -->"""
 

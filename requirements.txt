@@ -1,6 +1,7 @@
 aiodns
 aiohttp
 cryptography
-discord.py 
+discord.py
+dotenv
 flask
 huggingface_hub
